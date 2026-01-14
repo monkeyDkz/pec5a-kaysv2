@@ -1,0 +1,212 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions for authentication and authorization
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isDriver() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'driver';
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isVerified() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'verified';
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // Allow users to read their own profile
+      allow read: if isOwner(userId) || isAdmin();
+      
+      // Only admins can create users
+      allow create: if isAdmin();
+      
+      // Users can update their own profile (excluding role/status)
+      // Admins can update any user
+      allow update: if isAdmin() || 
+                      (isOwner(userId) && 
+                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status']));
+      
+      // Only admins can delete users
+      allow delete: if isAdmin();
+    }
+
+    // Orders collection
+    match /orders/{orderId} {
+      // Admins can read all orders
+      // Drivers can read orders assigned to them
+      // Users can read their own orders
+      allow read: if isAdmin() || 
+                    (isDriver() && resource.data.driverId == request.auth.uid) ||
+                    (isAuthenticated() && resource.data.userId == request.auth.uid);
+      
+      // Only authenticated verified users can create orders
+      allow create: if isAuthenticated() && isVerified();
+      
+      // Admins can update any order
+      // Drivers can update status and location of their assigned orders
+      // Users can cancel their own orders if status is 'created' or 'paid'
+      allow update: if isAdmin() || 
+                      (isDriver() && 
+                       resource.data.driverId == request.auth.uid &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'driverLocation', 'timeline', 'documents', 'notes', 'updatedAt'])) ||
+                      (isOwner(resource.data.userId) && 
+                       resource.data.status in ['created', 'paid'] && 
+                       request.resource.data.status == 'cancelled');
+      
+      // Only admins can delete orders
+      allow delete: if isAdmin();
+    }
+
+    // Products collection (catalog)
+    match /products/{productId} {
+      // Everyone can read products
+      allow read: if true;
+      
+      // Only admins can create/update/delete products
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Shops/Merchants collection
+    match /shops/{shopId} {
+      // Everyone can read shops
+      allow read: if true;
+      
+      // Only admins can create/update shops
+      allow create, update: if isAdmin();
+      
+      // Only admins can delete shops
+      allow delete: if isAdmin();
+    }
+
+    // Drivers collection
+    match /drivers/{driverId} {
+      // Admins can read all drivers
+      // Drivers can read their own profile
+      allow read: if isAdmin() || isOwner(driverId);
+      
+      // Only admins can create drivers
+      allow create: if isAdmin();
+      
+      // Admins can update any driver
+      // Drivers can update their own status, location, and availability
+      allow update: if isAdmin() || 
+                      (isOwner(driverId) && 
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'location', 'isAvailable', 'currentOrderId', 'updatedAt']));
+      
+      // Only admins can delete drivers
+      allow delete: if isAdmin();
+    }
+
+    // Verifications collection
+    match /verifications/{verificationId} {
+      // Admins can read all verifications
+      // Users can read their own verification
+      allow read: if isAdmin() || isOwner(resource.data.userId);
+      
+      // Only authenticated users can create verifications
+      allow create: if isAuthenticated();
+      
+      // Only admins can update/delete verifications
+      allow update, delete: if isAdmin();
+    }
+
+    // Disputes collection
+    match /disputes/{disputeId} {
+      // Admins can read all disputes
+      // Users can read their own disputes
+      allow read: if isAdmin() || 
+                    isOwner(resource.data.userId) ||
+                    (isDriver() && resource.data.driverId == request.auth.uid);
+      
+      // Authenticated users can create disputes
+      allow create: if isAuthenticated();
+      
+      // Only admins can update/delete disputes
+      allow update, delete: if isAdmin();
+    }
+
+    // Legal zones collection
+    match /legal-zones/{zoneId} {
+      // Everyone can read zones
+      allow read: if true;
+      
+      // Only admins can create/update/delete zones
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Alternative collection name (for backward compatibility)
+    match /legalZones/{zoneId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Config collection (app settings)
+    match /config/{configId} {
+      // Everyone can read config
+      allow read: if true;
+      
+      // Only admins can update config
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Activity logs collection
+    match /activity-logs/{logId} {
+      // Admins can read all activity logs
+      // Users can read logs related to their entities
+      allow read: if isAdmin() || 
+                    (isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid || 
+                      resource.data.entityId == request.auth.uid));
+      
+      // Only system (via Cloud Functions) and admins can create activity logs
+      allow create: if isAdmin();
+      
+      // No one can update or delete activity logs (immutable audit trail)
+      allow update, delete: if false;
+    }
+    
+    // Alternative collection name
+    match /activityLogs/{logId} {
+      allow read: if isAdmin() || 
+                    (isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid || 
+                      resource.data.entityId == request.auth.uid));
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // Notifications collection
+    match /notifications/{notificationId} {
+      // Users can read their own notifications
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      
+      // Only system (Cloud Functions) and admins can create notifications
+      allow create: if isAdmin();
+      
+      // Users can update their own notifications (mark as read)
+      allow update: if isOwner(resource.data.userId) && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'readAt']);
+      
+      // Only admins can delete notifications
+      allow delete: if isAdmin();
+    }
+
+    // Default deny all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
