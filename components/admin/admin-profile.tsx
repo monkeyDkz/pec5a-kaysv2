@@ -73,11 +73,6 @@ export function AdminProfile() {
     return role === "admin" ? "Super Admin" : role.charAt(0).toUpperCase() + role.slice(1)
   }
 
-  const getRoleDisplay = (role: string | undefined) => {
-    if (!role) return "User"
-    return role === "admin" ? "Super Admin" : role.charAt(0).toUpperCase() + role.slice(1)
-  }
-
   const handleSaveProfile = async () => {
     if (!user || !userProfile) return
     

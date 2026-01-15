@@ -251,6 +251,130 @@ pec5a/
 - **Firebase Authentication** - Gestion des utilisateurs
 - **Firestore** - Base de données NoSQL temps réel
 - **Firebase Storage** - Stockage de fichiers
+- **Next.js API Routes** - Backend API REST pour mobile (déployé sur Vercel)
+
+---
+
+## 📡 API pour applications mobiles
+
+### 🚀 Architecture Backend
+
+L'API REST est construite avec **Next.js API Routes** et déployée gratuitement sur **Vercel**.
+
+**Avantages:**
+- ✅ Déploiement gratuit (pas besoin de Firebase Blaze)
+- ✅ HTTPS automatique
+- ✅ Accessible publiquement depuis mobile
+- ✅ Même projet que l'admin web
+- ✅ Firebase Firestore comme base de données
+
+### 📚 Documentation Complète
+
+- **[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)** - Tous les endpoints avec exemples
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Guide de déploiement sur Vercel
+- **[openapi.yaml](./openapi.yaml)** - Spécification OpenAPI 3.0
+- **Swagger UI:** http://localhost:3000/api-docs (en dev) ou https://votre-projet.vercel.app/api-docs (en prod)
+
+### 🔌 Endpoints disponibles
+
+**Commandes:** (`/api/orders`)
+- `POST /api/orders` - Créer une nouvelle commande
+- `GET /api/orders/my` - Récupérer mes commandes
+- `GET /api/orders/:id` - Détails d'une commande
+- `PATCH /api/orders/:id` - Mettre à jour le statut
+
+**Boutiques & Produits:** (`/api/shops`)
+- `GET /api/shops` - Liste des boutiques (avec filtres géo)
+- `GET /api/shops/:id/products` - Produits d'une boutique
+
+**Chauffeurs:** (`/api/drivers`)
+- `POST /api/drivers/location` - Mise à jour position GPS
+- `POST /api/drivers/status` - Changer statut (available/busy/offline)
+
+**Upload & Notifications:**
+- `POST /api/upload` - Upload photo de livraison/signature
+- `POST /api/notifications/send` - Envoyer notification push (admin)
+- `PUT /api/notifications/token` - Enregistrer token FCM
+
+### 💻 Configuration Client Mobile
+
+**React Native:**
+```bash
+npm install @react-native-firebase/app @react-native-firebase/auth
+npm install @react-native-firebase/firestore @react-native-firebase/storage
+npm install axios  # Pour les appels REST
+```
+
+**Flutter:**
+```yaml
+dependencies:
+  firebase_core: ^2.24.0
+  firebase_auth: ^4.15.0
+  cloud_firestore: ^4.13.0
+  http: ^1.1.0  # Pour les appels REST
+```
+
+### 📱 Exemple d'utilisation
+
+**React Native:**
+```javascript
+import auth from '@react-native-firebase/auth';
+import axios from 'axios';
+
+const API_BASE_URL = 'https://votre-projet.vercel.app/api';
+
+// Helper pour les requêtes authentifiées
+async function apiCall(endpoint, options = {}) {
+  const token = await auth().currentUser?.getIdToken();
+  
+  return axios({
+    url: `${API_BASE_URL}${endpoint}`,
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+}
+
+// Créer une commande
+const response = await apiCall('/orders', {
+  method: 'POST',
+  data: {
+    shopId: 'shop_123',
+    items: [{ productId: 'prod_1', quantity: 2 }],
+    deliveryAddress: '10 Rue de Rivoli, 75001 Paris',
+    deliveryLocation: { latitude: 48.8566, longitude: 2.3522 },
+    paymentMethod: 'card',
+  },
+});
+
+console.log(response.data.order.reference); // ORD-1737000000
+```
+
+### 🚀 Déployer l'API sur Vercel
+
+Voir le guide complet dans **[DEPLOYMENT.md](./DEPLOYMENT.md)**
+
+**Résumé rapide:**
+```bash
+# 1. Installer Vercel CLI
+npm install -g vercel
+
+# 2. Déployer
+cd pec5a
+vercel login
+vercel --prod
+
+# 3. Configurer les variables d'environnement sur vercel.com
+# FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL, FIREBASE_ADMIN_PRIVATE_KEY
+```
+
+Votre API sera accessible sur: `https://votre-projet.vercel.app/api`
+
+---
+- **Firebase Cloud Functions** - API backend pour mobile
 
 ### DevOps
 - **pnpm** - Gestionnaire de paquets rapide
