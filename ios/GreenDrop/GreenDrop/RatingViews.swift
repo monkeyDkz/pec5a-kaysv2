@@ -189,7 +189,6 @@ final class ReviewService: ObservableObject {
                 )
             }
         } catch {
-            print("Error fetching reviews: \(error)")
             return []
         }
     }
@@ -342,7 +341,6 @@ struct OrderRatingView: View {
                 )
                 showSuccess = true
             } catch {
-                print("Error submitting review: \(error)")
             }
         }
     }

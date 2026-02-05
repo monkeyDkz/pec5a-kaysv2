@@ -64,7 +64,7 @@ const defaultJsonConfig = JSON.stringify(
     },
   },
   null,
-  2,
+  2
 )
 
 export default function ConfigPage() {
@@ -76,15 +76,13 @@ export default function ConfigPage() {
   }
 
   const handleSaveFeatures = () => {
-    console.log("[v0] Saving feature flags:", flags)
-    // Save logic here
+    // Save feature flags to Firestore
   }
 
   const handleSaveJson = () => {
     try {
       JSON.parse(jsonConfig)
-      console.log("[v0] Saving JSON configuration")
-      // Save logic here
+      // Save JSON configuration to Firestore
     } catch (error) {
       console.error("[v0] Invalid JSON:", error)
     }

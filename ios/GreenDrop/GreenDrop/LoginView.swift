@@ -121,14 +121,14 @@ struct LoginView: View {
                 // Google Sign-In Button
                 Button(action: loginWithGoogle) {
                     HStack(spacing: 12) {
-                        Image(systemName: "globe")
-                            .font(.title3)
+                        GoogleLogo()
+                            .frame(width: 20, height: 20)
                         Text("Continuer avec Google")
                             .fontWeight(.medium)
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.white)
+                    .background(Color(.systemBackground))
                     .foregroundColor(.primary)
                     .cornerRadius(12)
                     .overlay(
@@ -183,11 +183,8 @@ struct LoginView: View {
         isLoading = true
         Task {
             do {
-                print("🔐 Login attempt for: \(email)")
                 try await authService.signIn(email: email, password: password)
-                print("✅ Login successful")
             } catch {
-                print("❌ Login failed: \(error.localizedDescription)")
             }
             isLoading = false
         }
@@ -198,9 +195,7 @@ struct LoginView: View {
         Task {
             do {
                 try await authService.signInWithGoogle()
-                print("✅ Google login successful")
             } catch {
-                print("❌ Google login failed: \(error.localizedDescription)")
             }
             isLoading = false
         }
@@ -524,6 +519,178 @@ struct CustomSecureField: View {
             .padding()
             .background(Color(.systemGray6))
             .cornerRadius(12)
+        }
+    }
+}
+
+// MARK: - Google Role Selection View
+struct GoogleRoleSelectionView: View {
+    @EnvironmentObject var authService: AuthService
+    @State private var selectedRole = "user"
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+
+    let roles = [
+        ("user", "Client", "person.fill", "Achetez et faites-vous livrer"),
+        ("driver", "Chauffeur", "car.fill", "Livrez des commandes"),
+        ("merchant", "Marchand", "storefront.fill", "Vendez vos produits")
+    ]
+
+    var body: some View {
+        VStack(spacing: 32) {
+            Spacer()
+
+            // Header
+            VStack(spacing: 12) {
+                Image(systemName: "person.badge.plus")
+                    .font(.system(size: 60))
+                    .foregroundColor(Color(hex: "#22C55E"))
+
+                Text("Bienvenue sur GreenDrop !")
+                    .font(.title2)
+                    .fontWeight(.bold)
+
+                Text("Choisissez votre type de compte")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+
+            // Role Cards
+            VStack(spacing: 16) {
+                ForEach(roles, id: \.0) { role in
+                    Button(action: { selectedRole = role.0 }) {
+                        HStack(spacing: 16) {
+                            Image(systemName: role.2)
+                                .font(.title2)
+                                .frame(width: 40, height: 40)
+                                .background(selectedRole == role.0 ? Color(hex: "#22C55E").opacity(0.15) : Color(.systemGray6))
+                                .foregroundColor(selectedRole == role.0 ? Color(hex: "#22C55E") : .secondary)
+                                .cornerRadius(10)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(role.1)
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                Text(role.3)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: selectedRole == role.0 ? "checkmark.circle.fill" : "circle")
+                                .font(.title3)
+                                .foregroundColor(selectedRole == role.0 ? Color(hex: "#22C55E") : Color(.systemGray4))
+                        }
+                        .padding()
+                        .background(Color(.systemBackground))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(selectedRole == role.0 ? Color(hex: "#22C55E") : Color(.systemGray4), lineWidth: selectedRole == role.0 ? 2 : 1)
+                        )
+                    }
+                }
+            }
+            .padding(.horizontal)
+
+            // Error
+            if let error = errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(8)
+                    .padding(.horizontal)
+            }
+
+            // Confirm Button
+            Button(action: confirmRole) {
+                HStack {
+                    if isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Text("Confirmer")
+                            .fontWeight(.semibold)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color(hex: "#22C55E"))
+                .foregroundColor(.white)
+                .cornerRadius(12)
+            }
+            .disabled(isLoading)
+            .padding(.horizontal)
+
+            Spacer()
+        }
+    }
+
+    private func confirmRole() {
+        isLoading = true
+        errorMessage = nil
+
+        Task {
+            do {
+                try await authService.completeGoogleSignUp(role: selectedRole)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isLoading = false
+        }
+    }
+}
+
+// MARK: - Google Logo
+struct GoogleLogo: View {
+    var body: some View {
+        Canvas { context, size in
+            let w = size.width
+            let h = size.height
+            let cx = w / 2
+            let cy = h / 2
+            let r = min(w, h) / 2
+
+            // Blue arc (right)
+            var blue = Path()
+            blue.addArc(center: CGPoint(x: cx, y: cy), radius: r, startAngle: .degrees(-45), endAngle: .degrees(10), clockwise: false)
+            blue.addLine(to: CGPoint(x: cx, y: cy))
+            blue.closeSubpath()
+            context.fill(blue, with: .color(Color(red: 0.26, green: 0.52, blue: 0.96)))
+
+            // Green arc (bottom-right)
+            var green = Path()
+            green.addArc(center: CGPoint(x: cx, y: cy), radius: r, startAngle: .degrees(10), endAngle: .degrees(120), clockwise: false)
+            green.addLine(to: CGPoint(x: cx, y: cy))
+            green.closeSubpath()
+            context.fill(green, with: .color(Color(red: 0.20, green: 0.66, blue: 0.33)))
+
+            // Yellow arc (bottom-left)
+            var yellow = Path()
+            yellow.addArc(center: CGPoint(x: cx, y: cy), radius: r, startAngle: .degrees(120), endAngle: .degrees(210), clockwise: false)
+            yellow.addLine(to: CGPoint(x: cx, y: cy))
+            yellow.closeSubpath()
+            context.fill(yellow, with: .color(Color(red: 0.98, green: 0.74, blue: 0.02)))
+
+            // Red arc (top-left)
+            var red = Path()
+            red.addArc(center: CGPoint(x: cx, y: cy), radius: r, startAngle: .degrees(210), endAngle: .degrees(315), clockwise: false)
+            red.addLine(to: CGPoint(x: cx, y: cy))
+            red.closeSubpath()
+            context.fill(red, with: .color(Color(red: 0.92, green: 0.26, blue: 0.21)))
+
+            // White center
+            let innerR = r * 0.6
+            let inner = Path(ellipseIn: CGRect(x: cx - innerR, y: cy - innerR, width: innerR * 2, height: innerR * 2))
+            context.fill(inner, with: .color(.white))
+
+            // Blue right bar
+            let barRect = CGRect(x: cx - w * 0.05, y: cy - h * 0.12, width: w * 0.55, height: h * 0.24)
+            context.fill(Path(roundedRect: barRect, cornerRadius: 1), with: .color(Color(red: 0.26, green: 0.52, blue: 0.96)))
         }
     }
 }

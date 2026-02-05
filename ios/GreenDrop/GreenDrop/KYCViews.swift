@@ -144,7 +144,6 @@ final class KYCService: ObservableObject {
                     verificationStatus = .notStarted
                 }
             } catch {
-                print("Error loading verification: \(error)")
                 verificationStatus = .notStarted
             }
 

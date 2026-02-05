@@ -1768,7 +1768,6 @@ struct CheckoutView: View {
                 isPlacingOrder = false
                 paymentErrorMessage = error.localizedDescription
                 showPaymentError = true
-                print("Payment error: \(error)")
             }
         }
     }
@@ -1829,7 +1828,6 @@ struct CheckoutView: View {
             isPlacingOrder = false
             paymentErrorMessage = error.localizedDescription
             showPaymentError = true
-            print("Error creating order: \(error)")
         }
     }
 }
@@ -2840,7 +2838,6 @@ struct ReviewOrderView: View {
                 )
                 showSuccess = true
             } catch {
-                print("Error submitting review: \(error)")
             }
             isSubmitting = false
         }

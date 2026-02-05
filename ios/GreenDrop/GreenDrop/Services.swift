@@ -15,6 +15,15 @@ final class AuthService: ObservableObject {
     @Published private(set) var userProfile: UserProfile?
     @Published private(set) var isLoading = true
     @Published var errorMessage: String?
+    @Published var needsRoleSelection = false
+
+    // Pending Google user data (stored while waiting for role selection)
+    private var pendingGoogleUserId: String?
+    private var pendingGoogleEmail: String?
+    private var pendingGoogleName: String?
+
+    // Flag to prevent auth state listener from interfering during Google sign-up
+    private var isHandlingGoogleSignIn = false
 
     // Demo mode flag - set to true to bypass Firebase Auth
     private let demoMode = false
@@ -36,7 +45,6 @@ final class AuthService: ObservableObject {
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 if self.isLoading {
-                    print("Firebase Auth timeout - stopping loading")
                     self.isLoading = false
                 }
             }
@@ -44,11 +52,20 @@ final class AuthService: ObservableObject {
     }
 
     private func setupAuthStateListener() {
-        print("Setting up Firebase Auth listener...")
         authStateHandler = Auth.auth().addStateDidChangeListener { [weak self] _, user in
-            print("Auth state changed - user: \(user?.email ?? "nil")")
             Task { @MainActor in
                 self?.currentUser = user
+
+                // Skip if Google sign-in is handling auth (avoids race condition)
+                if self?.isHandlingGoogleSignIn == true {
+                    return
+                }
+
+                // Skip if waiting for role selection (new Google user)
+                if self?.needsRoleSelection == true {
+                    self?.isLoading = false
+                    return
+                }
 
                 if let user = user {
                     // Get ID token for API calls
@@ -70,13 +87,11 @@ final class AuthService: ObservableObject {
                 }
 
                 self?.isLoading = false
-                print("Auth loading complete - isAuthenticated: \(self?.isAuthenticated ?? false)")
             }
         }
     }
 
     private func fetchUserProfile(userId: String, email: String) async {
-        print("fetchUserProfile started for userId: \(userId)")
 
         // Always create a fallback profile first
         let fallbackProfile = UserProfile(
@@ -93,14 +108,10 @@ final class AuthService: ObservableObject {
         )
 
         do {
-            print("Fetching from Firestore collection 'users'...")
             let document = try await db.collection("users").document(userId).getDocument()
-            print("Firestore document fetched - exists: \(document.exists)")
 
             if document.exists, let data = document.data() {
-                print("📦 Firestore data received: \(data)")
                 let loadedRole = data["role"] as? String ?? fallbackProfile.role
-                print("📦 Role from Firestore: '\(loadedRole)'")
                 userProfile = UserProfile(
                     id: userId,
                     email: data["email"] as? String ?? email,
@@ -113,16 +124,11 @@ final class AuthService: ObservableObject {
                     stripeAccountId: data["stripeAccountId"] as? String,
                     createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                 )
-                print("✅ User profile loaded from Firestore: \(userProfile?.name ?? "nil"), role: \(userProfile?.role ?? "nil")")
             } else {
                 userProfile = fallbackProfile
-                print("No Firestore doc, using fallback profile: \(userProfile?.name ?? "nil"), role: \(userProfile?.role ?? "nil")")
             }
         } catch {
-            print("❌ Firestore error: \(error)")
-            print("❌ Error description: \(error.localizedDescription)")
             userProfile = fallbackProfile
-            print("⚠️ Using fallback profile due to error - role: \(fallbackProfile.role)")
         }
     }
 
@@ -134,7 +140,6 @@ final class AuthService: ObservableObject {
     }
 
     func signIn(email: String, password: String) async throws {
-        print("SignIn started for: \(email)")
         isLoading = true
         errorMessage = nil
 
@@ -157,23 +162,17 @@ final class AuthService: ObservableObject {
         }
 
         do {
-            print("Calling Firebase Auth...")
             let result = try await Auth.auth().signIn(withEmail: email, password: password)
-            print("Firebase Auth success - user: \(result.user.uid)")
             currentUser = result.user
 
             if let token = try? await result.user.getIDToken() {
                 APIService.shared.setAuthToken(token)
-                print("Token obtained")
             }
 
             // Fetch profile from Firestore
-            print("Fetching user profile...")
             await fetchUserProfile(userId: result.user.uid, email: email)
-            print("Profile fetched - isLoading = false")
             isLoading = false
         } catch {
-            print("SignIn error: \(error.localizedDescription)")
             isLoading = false
             errorMessage = mapAuthError(error)
             throw error
@@ -183,15 +182,18 @@ final class AuthService: ObservableObject {
     func signInWithGoogle() async throws {
         isLoading = true
         errorMessage = nil
+        isHandlingGoogleSignIn = true
 
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let rootViewController = windowScene.windows.first?.rootViewController else {
             isLoading = false
+            isHandlingGoogleSignIn = false
             throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Impossible de trouver la fenêtre principale"])
         }
 
         guard let clientID = FirebaseApp.app()?.options.clientID else {
             isLoading = false
+            isHandlingGoogleSignIn = false
             throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Configuration Google Sign-In manquante"])
         }
 
@@ -202,6 +204,7 @@ final class AuthService: ObservableObject {
             let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootViewController)
             guard let idToken = result.user.idToken?.tokenString else {
                 isLoading = false
+                isHandlingGoogleSignIn = false
                 throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Token Google manquant"])
             }
 
@@ -217,21 +220,114 @@ final class AuthService: ObservableObject {
                 APIService.shared.setAuthToken(token)
             }
 
-            await fetchUserProfile(userId: authResult.user.uid, email: authResult.user.email ?? "")
-
-            // Create user doc in Firestore if new
+            // Check if user doc exists in Firestore
             let userDoc = try? await db.collection("users").document(authResult.user.uid).getDocument()
             if userDoc == nil || !(userDoc?.exists ?? false) {
-                let userData: [String: Any] = [
-                    "email": authResult.user.email ?? "",
-                    "name": authResult.user.displayName ?? "User",
-                    "role": "user",
+                // New user — store pending data and ask for role selection
+                pendingGoogleUserId = authResult.user.uid
+                pendingGoogleEmail = authResult.user.email ?? ""
+                pendingGoogleName = authResult.user.displayName ?? "User"
+                isHandlingGoogleSignIn = false
+                needsRoleSelection = true
+                isLoading = false
+            } else {
+                // Existing user — fetch profile normally
+                isHandlingGoogleSignIn = false
+                await fetchUserProfile(userId: authResult.user.uid, email: authResult.user.email ?? "")
+                isLoading = false
+            }
+        } catch {
+            isLoading = false
+            isHandlingGoogleSignIn = false
+            errorMessage = error.localizedDescription
+            throw error
+        }
+    }
+
+    func completeGoogleSignUp(role: String) async throws {
+        guard let userId = pendingGoogleUserId,
+              let email = pendingGoogleEmail,
+              let name = pendingGoogleName else {
+            throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Données Google manquantes"])
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            var userData: [String: Any] = [
+                "email": email,
+                "name": name,
+                "role": role,
+                "status": "active",
+                "createdAt": Timestamp(date: Date())
+            ]
+
+            var shopId: String? = nil
+
+            if role == "merchant" {
+                let shopData: [String: Any] = [
+                    "ownerId": userId,
+                    "ownerName": name,
+                    "name": "\(name) - Boutique",
+                    "description": "",
                     "status": "active",
+                    "approvalStatus": "approved",
+                    "address": "",
+                    "category": "grocery",
+                    "location": ["latitude": 48.8566, "longitude": 2.3522],
+                    "deliveryFee": 2.99,
+                    "minOrderAmount": 10.0,
+                    "estimatedDeliveryTime": "20-30 min",
+                    "rating": 0.0,
+                    "totalOrders": 0,
+                    "totalProducts": 0,
+                    "createdAt": Timestamp(date: Date()),
+                    "updatedAt": Timestamp(date: Date())
+                ]
+                let shopRef = try await db.collection("shops").addDocument(data: shopData)
+                shopId = shopRef.documentID
+                userData["shopId"] = shopRef.documentID
+            } else if role == "driver" {
+                let driverData: [String: Any] = [
+                    "id": userId,
+                    "driverId": userId,
+                    "name": name,
+                    "email": email,
+                    "phone": "",
+                    "status": "offline",
+                    "vehicleType": "moto",
+                    "vehiclePlate": "",
+                    "rating": 5.0,
+                    "completedDeliveries": 0,
+                    "isAvailable": false,
+                    "location": ["lat": 48.8566, "lng": 2.3522, "updatedAt": Date().ISO8601Format()],
+                    "lastSeenAt": Date().ISO8601Format(),
                     "createdAt": Timestamp(date: Date())
                 ]
-                try? await db.collection("users").document(authResult.user.uid).setData(userData)
+                try await db.collection("drivers").document(userId).setData(driverData)
             }
 
+            try await db.collection("users").document(userId).setData(userData)
+
+            userProfile = UserProfile(
+                id: userId,
+                email: email,
+                name: name,
+                role: role,
+                status: "active",
+                phone: nil,
+                address: nil,
+                shopId: shopId,
+                stripeAccountId: nil,
+                createdAt: Date()
+            )
+
+            // Clear pending data
+            pendingGoogleUserId = nil
+            pendingGoogleEmail = nil
+            pendingGoogleName = nil
+            needsRoleSelection = false
             isLoading = false
         } catch {
             isLoading = false
@@ -241,7 +337,6 @@ final class AuthService: ObservableObject {
     }
 
     func signUp(email: String, password: String, name: String, role: String = "user") async throws {
-        print("📝 SignUp started - email: \(email), role: \(role)")
         isLoading = true
         errorMessage = nil
 
@@ -310,7 +405,6 @@ final class AuthService: ObservableObject {
                 let shopRef = try await db.collection("shops").addDocument(data: shopData)
                 shopId = shopRef.documentID
                 userData["shopId"] = shopRef.documentID
-                print("✅ Shop created for merchant: \(shopRef.documentID)")
             } else if role == "driver" {
                 // Create a driver document
                 let driverData: [String: Any] = [
@@ -330,11 +424,9 @@ final class AuthService: ObservableObject {
                     "createdAt": Timestamp(date: Date())
                 ]
                 try await db.collection("drivers").document(result.user.uid).setData(driverData)
-                print("✅ Driver document created: \(result.user.uid)")
             }
 
             try await db.collection("users").document(result.user.uid).setData(userData)
-            print("✅ User saved to Firestore with role: \(role)")
 
             let newProfile = UserProfile(
                 id: result.user.uid,
@@ -364,6 +456,11 @@ final class AuthService: ObservableObject {
         }
         currentUser = nil
         userProfile = nil
+        needsRoleSelection = false
+        isHandlingGoogleSignIn = false
+        pendingGoogleUserId = nil
+        pendingGoogleEmail = nil
+        pendingGoogleName = nil
         APIService.shared.setAuthToken(nil)
     }
 
@@ -454,7 +551,6 @@ final class DataService: ObservableObject {
     func startOrdersListener(forUser userId: String) {
         stopOrdersListener()
 
-        print("Starting real-time orders listener for user: \(userId)")
 
         ordersListener = db.collection("orders")
             .whereField("userId", isEqualTo: userId)
@@ -463,7 +559,6 @@ final class DataService: ObservableObject {
                 guard let self = self else { return }
 
                 if let error = error {
-                    print("Orders listener error: \(error.localizedDescription)")
                     return
                 }
 
@@ -480,7 +575,6 @@ final class DataService: ObservableObject {
                 self.checkOrderStatusChanges(oldOrders: self.orders, newOrders: loadedOrders)
 
                 self.orders = loadedOrders
-                print("Real-time update: \(loadedOrders.count) orders")
             }
     }
 
@@ -488,7 +582,6 @@ final class DataService: ObservableObject {
     func startOrdersListener(forShop shopId: String) {
         stopOrdersListener()
 
-        print("Starting real-time orders listener for shop: \(shopId)")
 
         ordersListener = db.collection("orders")
             .whereField("shopId", isEqualTo: shopId)
@@ -497,7 +590,6 @@ final class DataService: ObservableObject {
                 guard let self = self else { return }
 
                 if let error = error {
-                    print("Orders listener error: \(error.localizedDescription)")
                     return
                 }
 
@@ -514,7 +606,6 @@ final class DataService: ObservableObject {
                 self.checkNewOrdersForMerchant(oldOrders: self.orders, newOrders: loadedOrders)
 
                 self.orders = loadedOrders
-                print("Real-time update: \(loadedOrders.count) shop orders")
             }
     }
 
@@ -523,7 +614,6 @@ final class DataService: ObservableObject {
     func startDeliveriesListener(forDriver driverId: String) {
         stopDeliveriesListener()
 
-        print("Starting real-time deliveries listener for driver: \(driverId)")
 
         // Listen for "ready" orders (available for pickup)
         deliveriesListener = db.collection("orders")
@@ -532,7 +622,6 @@ final class DataService: ObservableObject {
                 guard let self = self else { return }
 
                 if let error = error {
-                    print("Deliveries listener error: \(error.localizedDescription)")
                     return
                 }
 
@@ -563,7 +652,6 @@ final class DataService: ObservableObject {
                 }
 
                 self.deliveries = activeDeliveries + availableDeliveries
-                print("Real-time update: \(availableDeliveries.count) available, \(activeDeliveries.count) active deliveries")
             }
 
         // Also listen for orders assigned to this driver
@@ -611,7 +699,6 @@ final class DataService: ObservableObject {
                 // Merge: keep available deliveries, replace driver-specific ones
                 let availableOnly = self.deliveries.filter { $0.status == .available }
                 self.deliveries = availableOnly + driverDeliveries
-                print("Driver deliveries update: \(driverDeliveries.count) for driver \(driverId)")
             }
     }
 
@@ -722,10 +809,8 @@ final class DataService: ObservableObject {
             }
 
             shops = loadedShops
-            print("Loaded \(shops.count) shops from Firestore")
         } catch {
             errorMessage = error.localizedDescription
-            print("Error loading shops: \(error)")
         }
 
         isLoading = false
@@ -819,10 +904,8 @@ final class DataService: ObservableObject {
                 }
             }
 
-            print("Loaded \(loadedProducts.count) products for shop \(shopId)")
         } catch {
             errorMessage = error.localizedDescription
-            print("Error loading products: \(error)")
         }
 
         isLoading = false
@@ -875,10 +958,8 @@ final class DataService: ObservableObject {
             }
 
             orders = loadedOrders
-            print("Loaded \(orders.count) orders for user \(userId)")
         } catch {
             errorMessage = error.localizedDescription
-            print("Error loading orders: \(error)")
         }
 
         isLoading = false
@@ -903,10 +984,8 @@ final class DataService: ObservableObject {
             }
 
             orders = loadedOrders
-            print("Loaded \(orders.count) orders for shop \(shopId)")
         } catch {
             errorMessage = error.localizedDescription
-            print("Error loading shop orders: \(error)")
         }
 
         isLoading = false
@@ -1074,9 +1153,7 @@ final class DataService: ObservableObject {
                     paymentIntentId: orders[index].paymentIntentId
                 )
             }
-            print("Order \(orderId) status updated to \(status.rawValue)")
         } catch {
-            print("Error updating order status: \(error)")
         }
     }
 
@@ -1097,8 +1174,21 @@ final class DataService: ObservableObject {
                 .getDocuments()
             return snapshot.documents.first?.documentID
         } catch {
-            print("Error resolving shopId for owner \(ownerId): \(error)")
             return nil
+        }
+    }
+
+    func updateShop(shopId: String, data: [String: Any]) async throws {
+        var updateData = data
+        updateData["updatedAt"] = Timestamp(date: Date())
+        try await db.collection("shops").document(shopId).updateData(updateData)
+
+        // Refresh local cache
+        if let index = shops.firstIndex(where: { $0.id == shopId }) {
+            if let name = data["name"] as? String { shops[index].name = name }
+            if let description = data["description"] as? String { shops[index].description = description }
+            if let imageURL = data["imageURL"] as? String { shops[index].imageURL = imageURL }
+            if let address = data["address"] as? String { shops[index].address = address }
         }
     }
 
@@ -1129,7 +1219,6 @@ final class DataService: ObservableObject {
                 ])
             }
         } catch {
-            print("Error updating driver location: \(error)")
         }
     }
 
@@ -1142,7 +1231,6 @@ final class DataService: ObservableObject {
                 "lastSeenAt": Timestamp(date: Date())
             ])
         } catch {
-            print("Error updating driver status: \(error)")
         }
     }
 
@@ -1190,9 +1278,7 @@ final class DataService: ObservableObject {
             }
 
             deliveries = loadedDeliveries
-            print("Loaded \(deliveries.count) available deliveries")
         } catch {
-            print("Error loading deliveries: \(error)")
         }
 
         isLoading = false
@@ -1233,9 +1319,7 @@ final class DataService: ObservableObject {
                 deliveries[index].status = .accepted
             }
 
-            print("Delivery \(deliveryId) accepted by driver \(driverId)")
         } catch {
-            print("Error accepting delivery: \(error)")
         }
     }
 
@@ -1658,10 +1742,8 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
             await MainActor.run {
                 self.isAuthorized = granted
             }
-            print("Notification authorization: \(granted)")
             return granted
         } catch {
-            print("Notification authorization error: \(error)")
             return false
         }
     }
@@ -1678,7 +1760,6 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
 
     func sendLocalNotification(title: String, body: String, delay: TimeInterval = 1) {
         guard isAuthorized else {
-            print("Notifications not authorized")
             return
         }
 
@@ -1697,9 +1778,7 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
 
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                print("Failed to schedule notification: \(error)")
             } else {
-                print("Notification scheduled: \(title)")
             }
         }
     }
@@ -1756,7 +1835,6 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
     func clearBadge() {
         UNUserNotificationCenter.current().setBadgeCount(0) { error in
             if let error = error {
-                print("Failed to clear badge: \(error)")
             }
         }
     }
@@ -1784,7 +1862,6 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         // Handle notification tap
-        print("Notification tapped: \(response.notification.request.identifier)")
         completionHandler()
     }
 }
@@ -1853,7 +1930,6 @@ final class FavoritesManager: ObservableObject {
         if let productIds = UserDefaults.standard.array(forKey: productsFavoritesKey) as? [String] {
             favoriteProductIds = Set(productIds)
         }
-        print("Loaded \(favoriteShopIds.count) favorite shops, \(favoriteProductIds.count) favorite products")
     }
 
     private func saveFavorites() {
@@ -1940,7 +2016,6 @@ final class ReviewManager: ObservableObject {
                 body: "Votre évaluation a été enregistrée."
             )
         } catch {
-            print("Error submitting review: \(error)")
             throw error
         }
 
@@ -1976,7 +2051,6 @@ final class ReviewManager: ObservableObject {
 
             reviews = loadedReviews
         } catch {
-            print("Error loading reviews: \(error)")
         }
 
         isLoading = false

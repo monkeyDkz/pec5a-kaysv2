@@ -204,7 +204,6 @@ final class PromoCodeService: ObservableObject {
                 parsePromoCode(id: doc.documentID, data: doc.data())
             }.filter { $0.isValid }
         } catch {
-            print("Error loading promo codes: \(error)")
         }
     }
 
@@ -224,7 +223,6 @@ final class PromoCodeService: ObservableObject {
                 "usedAt": Timestamp(date: Date())
             ])
         } catch {
-            print("Error recording promo usage: \(error)")
         }
     }
 }

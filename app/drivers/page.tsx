@@ -179,11 +179,7 @@ export default function DriversPage() {
             <p className="text-muted-foreground mt-1">{t("driverOperations")}</p>
           </div>
           <div className="flex gap-2">
-            <Button 
-              onClick={handleToggleSimulation}
-              variant={simulating ? "destructive" : "default"}
-              className="gap-2"
-            >
+            <Button onClick={handleToggleSimulation} variant={simulating ? "destructive" : "default"} className="gap-2">
               {simulating ? (
                 <>
                   <Square className="h-4 w-4" />
@@ -208,10 +204,26 @@ export default function DriversPage() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <KPICard title={isFrench ? "Chauffeurs en ligne" : "Drivers online"} value={(stats.online ?? 0).toLocaleString()} icon={<Navigation className="h-4 w-4" />} />
-          <KPICard title={isFrench ? "En course" : "On a job"} value={(stats.busy ?? 0).toLocaleString()} icon={<Activity className="h-4 w-4" />} />
-          <KPICard title={isFrench ? "Courses actives" : "Active deliveries"} value={(stats.activeDeliveries ?? 0).toLocaleString()} icon={<Car className="h-4 w-4" />} />
-          <KPICard title={isFrench ? "Note moyenne" : "Avg rating"} value={avgRatingDisplay} icon={<Star className="h-4 w-4" />} />
+          <KPICard
+            title={isFrench ? "Chauffeurs en ligne" : "Drivers online"}
+            value={(stats.online ?? 0).toLocaleString()}
+            icon={<Navigation className="h-4 w-4" />}
+          />
+          <KPICard
+            title={isFrench ? "En course" : "On a job"}
+            value={(stats.busy ?? 0).toLocaleString()}
+            icon={<Activity className="h-4 w-4" />}
+          />
+          <KPICard
+            title={isFrench ? "Courses actives" : "Active deliveries"}
+            value={(stats.activeDeliveries ?? 0).toLocaleString()}
+            icon={<Car className="h-4 w-4" />}
+          />
+          <KPICard
+            title={isFrench ? "Note moyenne" : "Avg rating"}
+            value={avgRatingDisplay}
+            icon={<Star className="h-4 w-4" />}
+          />
         </div>
 
         {error && (
@@ -248,144 +260,144 @@ export default function DriversPage() {
               <Card className="order-2 xl:order-1">
                 <CardHeader className="space-y-2">
                   <CardTitle>{isFrench ? "Flotte en temps réel" : "Real-time fleet"}</CardTitle>
-              <div className="flex flex-wrap gap-3">
-                <div className="relative flex-1 min-w-[220px]">
-                  <Input
-                    placeholder={isFrench ? "Rechercher un chauffeur..." : "Search drivers..."}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full"
-                  />
-                </div>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder={t("status")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t("allOrders")}</SelectItem>
-                    <SelectItem value="online">{driverStatusLabels.online}</SelectItem>
-                    <SelectItem value="busy">{driverStatusLabels.busy}</SelectItem>
-                    <SelectItem value="break">{driverStatusLabels.break}</SelectItem>
-                    <SelectItem value="offline">{driverStatusLabels.offline}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[520px] pr-4">
-                <div className="space-y-4">
-                  {filteredDrivers.length === 0 && (
-                    <div className="rounded-lg border border-dashed border-muted-foreground/30 p-6 text-center text-sm text-muted-foreground">
-                      {isFrench ? "Aucun chauffeur" : "No drivers match your filters"}
+                  <div className="flex flex-wrap gap-3">
+                    <div className="relative flex-1 min-w-[220px]">
+                      <Input
+                        placeholder={isFrench ? "Rechercher un chauffeur..." : "Search drivers..."}
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="w-full"
+                      />
                     </div>
-                  )}
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder={t("status")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t("allOrders")}</SelectItem>
+                        <SelectItem value="online">{driverStatusLabels.online}</SelectItem>
+                        <SelectItem value="busy">{driverStatusLabels.busy}</SelectItem>
+                        <SelectItem value="break">{driverStatusLabels.break}</SelectItem>
+                        <SelectItem value="offline">{driverStatusLabels.offline}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[520px] pr-4">
+                    <div className="space-y-4">
+                      {filteredDrivers.length === 0 && (
+                        <div className="rounded-lg border border-dashed border-muted-foreground/30 p-6 text-center text-sm text-muted-foreground">
+                          {isFrench ? "Aucun chauffeur" : "No drivers match your filters"}
+                        </div>
+                      )}
 
-                  {filteredDrivers.map((driver) => (
-                    <div key={driver.id} className="rounded-xl border bg-card/70 p-4 shadow-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-base font-semibold">{driver.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {driver.vehicleType} · {driver.phone}
-                          </p>
-                        </div>
-                        <Badge variant="outline" className={statusBadges[driver.status]}>
-                          {driverStatusLabels[driver.status]}
-                        </Badge>
-                      </div>
+                      {filteredDrivers.map((driver) => (
+                        <div key={driver.id} className="rounded-xl border bg-card/70 p-4 shadow-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="text-base font-semibold">{driver.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {driver.vehicleType} · {driver.phone}
+                              </p>
+                            </div>
+                            <Badge variant="outline" className={statusBadges[driver.status]}>
+                              {driverStatusLabels[driver.status]}
+                            </Badge>
+                          </div>
 
-                      <div className="mt-3 grid gap-3 text-xs text-muted-foreground md:grid-cols-3">
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-3.5 w-3.5" />
-                          {driver.location
-                            ? `${driver.location.lat.toFixed(3)}, ${driver.location.lng.toFixed(3)}`
-                            : isFrench
-                              ? "Position inconnue"
-                              : "Unknown"}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Smartphone className="h-3.5 w-3.5" />
-                          {driver.lastSeenAt
-                            ? new Date(driver.lastSeenAt).toLocaleTimeString()
-                            : isFrench
-                              ? "Pas de signal"
-                              : "No ping"}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <UserCheck className="h-3.5 w-3.5" />
-                          {driver.currentOrderId ? driver.currentOrderId : isFrench ? "Disponible" : "Available"}
-                        </div>
-                      </div>
+                          <div className="mt-3 grid gap-3 text-xs text-muted-foreground md:grid-cols-3">
+                            <div className="flex items-center gap-2">
+                              <MapPin className="h-3.5 w-3.5" />
+                              {driver.location
+                                ? `${driver.location.lat.toFixed(3)}, ${driver.location.lng.toFixed(3)}`
+                                : isFrench
+                                  ? "Position inconnue"
+                                  : "Unknown"}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Smartphone className="h-3.5 w-3.5" />
+                              {driver.lastSeenAt
+                                ? new Date(driver.lastSeenAt).toLocaleTimeString()
+                                : isFrench
+                                  ? "Pas de signal"
+                                  : "No ping"}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <UserCheck className="h-3.5 w-3.5" />
+                              {driver.currentOrderId ? driver.currentOrderId : isFrench ? "Disponible" : "Available"}
+                            </div>
+                          </div>
 
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <Select
-                          value={driver.status}
-                          onValueChange={(value) => handleStatusChange(driver, value as DriverStatus)}
-                          disabled={statusUpdatingId === driver.id || releasingId === driver.id}
-                        >
-                          <SelectTrigger className="w-[180px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="online">{driverStatusLabels.online}</SelectItem>
-                            <SelectItem value="busy">{driverStatusLabels.busy}</SelectItem>
-                            <SelectItem value="break">{driverStatusLabels.break}</SelectItem>
-                            <SelectItem value="offline">{driverStatusLabels.offline}</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          variant="outline"
-                          className="bg-transparent"
-                          onClick={() => handleReleaseDriver(driver.id)}
-                          disabled={releasingId === driver.id || statusUpdatingId === driver.id}
-                        >
-                          {releasingId === driver.id ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              {isFrench ? "Libération..." : "Releasing..."}
-                            </>
-                          ) : (
-                            <>
-                              <Radar className="mr-2 h-4 w-4" />
-                              {isFrench ? "Libérer" : "Release"}
-                            </>
-                          )}
-                        </Button>
-                      </div>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <Select
+                              value={driver.status}
+                              onValueChange={(value) => handleStatusChange(driver, value as DriverStatus)}
+                              disabled={statusUpdatingId === driver.id || releasingId === driver.id}
+                            >
+                              <SelectTrigger className="w-[180px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="online">{driverStatusLabels.online}</SelectItem>
+                                <SelectItem value="busy">{driverStatusLabels.busy}</SelectItem>
+                                <SelectItem value="break">{driverStatusLabels.break}</SelectItem>
+                                <SelectItem value="offline">{driverStatusLabels.offline}</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              variant="outline"
+                              className="bg-transparent"
+                              onClick={() => handleReleaseDriver(driver.id)}
+                              disabled={releasingId === driver.id || statusUpdatingId === driver.id}
+                            >
+                              {releasingId === driver.id ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  {isFrench ? "Libération..." : "Releasing..."}
+                                </>
+                              ) : (
+                                <>
+                                  <Radar className="mr-2 h-4 w-4" />
+                                  {isFrench ? "Libérer" : "Release"}
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
 
-          <Card className="order-1 xl:order-2">
-            <CardHeader>
-              <CardTitle>{isFrench ? "Carte en direct" : "Live map"}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <FleetMap drivers={drivers} driverStatusLabels={driverStatusLabels} isFrench={isFrench} />
-              <div className="mt-4 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-                <div className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full bg-emerald-500" />
-                  {isFrench ? "Connectés" : "Online"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full bg-amber-400" />
-                  {isFrench ? "En course" : "On a job"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full bg-blue-500" />
-                  {isFrench ? "Pause" : "On break"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full bg-slate-400" />
-                  {isFrench ? "Hors ligne" : "Offline"}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              <Card className="order-1 xl:order-2">
+                <CardHeader>
+                  <CardTitle>{isFrench ? "Carte en direct" : "Live map"}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <FleetMap drivers={drivers} driverStatusLabels={driverStatusLabels} isFrench={isFrench} />
+                  <div className="mt-4 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full bg-emerald-500" />
+                      {isFrench ? "Connectés" : "Online"}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full bg-amber-400" />
+                      {isFrench ? "En course" : "On a job"}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full bg-blue-500" />
+                      {isFrench ? "Pause" : "On break"}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full bg-slate-400" />
+                      {isFrench ? "Hors ligne" : "Offline"}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
@@ -393,8 +405,7 @@ export default function DriversPage() {
       <CreateDriverModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        onSuccess={(driver) => {
-          console.log("New driver created:", driver)
+        onSuccess={() => {
           window.location.reload()
         }}
       />
@@ -430,7 +441,7 @@ function FleetMap({
     <div className="h-[420px] w-full rounded-2xl overflow-hidden border">
       <Map center={parisCenter} zoom={11}>
         <MapControls position="top-right" showZoom />
-        
+
         {driversWithLocations.map((driver) => (
           <MapMarker
             key={driver.id}
@@ -453,23 +464,24 @@ function FleetMap({
                             : "rgba(148, 163, 184, 0.9)",
                   }}
                 >
-                  {driver.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                  {driver.name
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
+                    .slice(0, 2)}
                 </div>
                 <div className="rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow">
                   {driverStatusLabels[driver.status]}
                 </div>
               </div>
             </MarkerContent>
-            
+
             {selectedDriver?.id === driver.id && (
               <MarkerPopup closeButton>
                 <div className="min-w-[200px] space-y-2">
                   <div>
                     <p className="font-semibold text-sm">{driver.name}</p>
-                    <Badge
-                      variant="secondary"
-                      className={statusBadges[driver.status]}
-                    >
+                    <Badge variant="secondary" className={statusBadges[driver.status]}>
                       {statusLabels[driver.status]}
                     </Badge>
                   </div>
@@ -495,12 +507,12 @@ function FleetMap({
 }
 
 // New Map View Component using MapCN
-function DriversMapView({ drivers, isFrench }: { drivers: Driver[], isFrench: boolean }) {
+function DriversMapView({ drivers, isFrench }: { drivers: Driver[]; isFrench: boolean }) {
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null)
-  
-  const onlineDrivers = drivers.filter(d => d.status !== "offline")
+
+  const onlineDrivers = drivers.filter((d) => d.status !== "offline")
   const parisCenter: [number, number] = [2.3522, 48.8566]
-  
+
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       {/* Map */}
@@ -509,9 +521,9 @@ function DriversMapView({ drivers, isFrench }: { drivers: Driver[], isFrench: bo
           <div className="h-[600px] rounded-lg overflow-hidden">
             <Map center={parisCenter} zoom={12}>
               <MapControls position="top-right" showZoom showFullscreen showLocate />
-              
+
               {drivers
-                .filter(driver => driver.location && driver.status !== "offline")
+                .filter((driver) => driver.location && driver.status !== "offline")
                 .map((driver) => (
                   <MapMarker
                     key={driver.id}
@@ -520,7 +532,7 @@ function DriversMapView({ drivers, isFrench }: { drivers: Driver[], isFrench: bo
                     onClick={() => setSelectedDriver(driver)}
                   >
                     <MarkerContent>
-                      <div 
+                      <div
                         className="w-6 h-6 rounded-full border-2 border-white shadow-lg cursor-pointer hover:scale-110 transition-transform"
                         style={{ backgroundColor: statusColors[driver.status] }}
                       />
@@ -531,15 +543,15 @@ function DriversMapView({ drivers, isFrench }: { drivers: Driver[], isFrench: bo
                           <div className="flex items-center gap-3">
                             <Avatar>
                               <AvatarFallback>
-                                {driver.name.split(" ").map(n => n[0]).join("")}
+                                {driver.name
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")}
                               </AvatarFallback>
                             </Avatar>
                             <div>
                               <p className="font-semibold">{driver.name}</p>
-                              <Badge
-                                variant="secondary"
-                                className={statusBadges[driver.status]}
-                              >
+                              <Badge variant="secondary" className={statusBadges[driver.status]}>
                                 {statusLabels[driver.status]}
                               </Badge>
                             </div>
@@ -550,7 +562,9 @@ function DriversMapView({ drivers, isFrench }: { drivers: Driver[], isFrench: bo
                           <div className="space-y-2 text-sm">
                             <div className="flex items-center gap-2">
                               <Car className="h-4 w-4 text-muted-foreground" />
-                              <span>{driver.vehicleType} - {driver.vehiclePlate}</span>
+                              <span>
+                                {driver.vehicleType} - {driver.vehiclePlate}
+                              </span>
                             </div>
                             <div className="flex items-center gap-2">
                               <Phone className="h-4 w-4 text-muted-foreground" />
@@ -603,16 +617,16 @@ function DriversMapView({ drivers, isFrench }: { drivers: Driver[], isFrench: bo
                 >
                   <Avatar>
                     <AvatarFallback>
-                      {driver.name.split(" ").map(n => n[0]).join("")}
+                      {driver.name
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center justify-between">
                       <p className="font-medium text-sm">{driver.name}</p>
-                      <div 
-                        className="w-2 h-2 rounded-full" 
-                        style={{ backgroundColor: statusColors[driver.status] }}
-                      />
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColors[driver.status] }} />
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {driver.vehicleType} • {driver.vehiclePlate}

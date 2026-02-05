@@ -157,7 +157,6 @@ struct OrderChatView: View {
             do {
                 try await chatService.sendMessage(orderId: order.id, content: content)
             } catch {
-                print("Error sending message: \(error)")
             }
         }
     }
@@ -222,7 +221,6 @@ struct DeliveryChatView: View {
             do {
                 try await chatService.sendMessage(orderId: delivery.orderId, content: content)
             } catch {
-                print("Error sending message: \(error)")
             }
         }
     }

@@ -112,7 +112,6 @@ final class TipService: ObservableObject {
 
             return (total, pending)
         } catch {
-            print("Error fetching tips: \(error)")
             return (0, 0)
         }
     }

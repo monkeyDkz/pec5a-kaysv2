@@ -51,12 +51,9 @@ final class PaymentService: ObservableObject {
         do {
             if let token = try await getAuthToken() {
                 request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                print("[Payment] Auth token set: \(token.prefix(20))...")
             } else {
-                print("[Payment] No current user, skipping auth token")
             }
         } catch {
-            print("[Payment] Failed to get auth token: \(error)")
         }
 
         let body: [String: Any] = [

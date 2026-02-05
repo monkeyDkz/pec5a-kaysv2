@@ -22,7 +22,6 @@ class VoiceNavigationService: NSObject, ObservableObject {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .voicePrompt, options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
-            print("Failed to setup audio session: \(error)")
         }
     }
 

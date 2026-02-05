@@ -139,6 +139,8 @@ struct RootView: View {
         Group {
             if authService.isLoading {
                 SplashView()
+            } else if authService.needsRoleSelection {
+                GoogleRoleSelectionView()
             } else if authService.isAuthenticated {
                 MainView()
             } else {
@@ -146,12 +148,7 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: authService.isAuthenticated)
-        .onAppear {
-            print("🏠 RootView - isLoading: \(authService.isLoading), isAuthenticated: \(authService.isAuthenticated), userProfile: \(authService.userProfile?.email ?? "nil")")
-        }
-        .onChange(of: authService.isAuthenticated) { _, newValue in
-            print("🔄 Auth changed - isAuthenticated: \(newValue), role: \(authService.userProfile?.role ?? "nil")")
-        }
+        .animation(.easeInOut(duration: 0.3), value: authService.needsRoleSelection)
     }
 }
 

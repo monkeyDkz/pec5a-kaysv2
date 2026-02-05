@@ -12,9 +12,31 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "GreenDrop Admin",
-  description: "Admin Back Office for GreenDrop Operations",
-  generator: "v0.app",
+  title: {
+    default: "GreenDrop - Livraison CBD Eco-Responsable",
+    template: "%s | GreenDrop",
+  },
+  description:
+    "Plateforme de livraison de produits CBD legaux en France avec une approche eco-responsable. Suivi en temps reel, paiement securise, verification d'identite.",
+  keywords: ["CBD", "livraison", "eco-responsable", "France", "GreenDrop", "produits CBD"],
+  authors: [{ name: "GreenDrop" }],
+  openGraph: {
+    title: "GreenDrop - Livraison CBD Eco-Responsable",
+    description: "Plateforme de livraison de produits CBD legaux en France avec une approche eco-responsable.",
+    url: "https://pec5a-kaysv2-hm7i.vercel.app",
+    siteName: "GreenDrop",
+    locale: "fr_FR",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "GreenDrop - Livraison CBD Eco-Responsable",
+    description: "Plateforme de livraison de produits CBD legaux en France.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
   icons: {
     icon: [
       {

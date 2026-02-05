@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import FirebaseStorage
 
 // MARK: - Merchant Dashboard View
 struct MerchantDashboardView: View {
@@ -165,6 +166,15 @@ struct MerchantDashboardView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Dashboard")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink(destination: ShopSettingsView(shopId: shopId)) {
+                        Image(systemName: "storefront")
+                            .foregroundColor(Color(hex: "#22C55E"))
+                    }
+                    .accessibilityLabel("Paramètres de la boutique")
+                }
+            }
             .refreshable {
                 await resolveShopIdAndLoadOrders()
             }
@@ -893,12 +903,43 @@ struct AddEditProductView: View {
     @State private var price = ""
     @State private var category = ""
     @State private var stock = "10"
+    @State private var selectedImage: UIImage?
+    @State private var showImagePicker = false
+    @State private var imagePickerSource: UIImagePickerController.SourceType = .photoLibrary
+    @State private var showImageSourceSheet = false
+    @State private var isUploading = false
 
     var isEditing: Bool { existingProduct != nil }
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Photo du produit") {
+                    if let image = selectedImage {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(height: 200)
+                            .clipped()
+                            .cornerRadius(12)
+                            .onTapGesture { showImageSourceSheet = true }
+                    } else if let urlString = existingProduct?.imageURL, !urlString.isEmpty {
+                        AsyncImage(url: URL(string: urlString)) { phase in
+                            switch phase {
+                            case .success(let img):
+                                img.resizable().scaledToFill()
+                                    .frame(height: 200).clipped().cornerRadius(12)
+                            default:
+                                imagePlaceholder
+                            }
+                        }
+                        .onTapGesture { showImageSourceSheet = true }
+                    } else {
+                        imagePlaceholder
+                            .onTapGesture { showImageSourceSheet = true }
+                    }
+                }
+
                 Section("Informations") {
                     TextField("Nom du produit", text: $name)
                     TextField("Description", text: $description, axis: .vertical)
@@ -934,7 +975,7 @@ struct AddEditProductView: View {
                         saveProduct()
                     }
                     .fontWeight(.semibold)
-                    .disabled(name.isEmpty || price.isEmpty)
+                    .disabled(name.isEmpty || price.isEmpty || isUploading)
                 }
             }
             .onAppear {
@@ -946,14 +987,52 @@ struct AddEditProductView: View {
                     stock = "\(product.stock)"
                 }
             }
+            .confirmationDialog("Ajouter une photo", isPresented: $showImageSourceSheet) {
+                Button("Prendre une photo") {
+                    imagePickerSource = .camera
+                    showImagePicker = true
+                }
+                Button("Choisir dans la galerie") {
+                    imagePickerSource = .photoLibrary
+                    showImagePicker = true
+                }
+                Button("Annuler", role: .cancel) {}
+            }
+            .sheet(isPresented: $showImagePicker) {
+                ProductImagePicker(image: $selectedImage, sourceType: imagePickerSource)
+            }
         }
+    }
+
+    private var imagePlaceholder: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "camera.fill")
+                .font(.largeTitle)
+                .foregroundColor(.secondary)
+            Text("Ajouter une photo")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 150)
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
     }
 
     func saveProduct() {
         guard let priceValue = Double(price.replacingOccurrences(of: ",", with: ".")),
               let stockValue = Int(stock) else { return }
 
+        isUploading = true
+
         Task {
+            var imageURL: String? = existingProduct?.imageURL
+
+            // Upload image if a new one was selected
+            if let image = selectedImage {
+                imageURL = await uploadProductImage(image)
+            }
+
             if let existing = existingProduct {
                 var updated = existing
                 updated.name = name
@@ -961,6 +1040,9 @@ struct AddEditProductView: View {
                 updated.price = priceValue
                 updated.category = category
                 updated.stock = stockValue
+                if let url = imageURL {
+                    updated.imageURL = url
+                }
                 try? await dataService.updateProduct(updated)
             } else {
                 let newProduct = Product(
@@ -968,7 +1050,7 @@ struct AddEditProductView: View {
                     name: name,
                     description: description,
                     price: priceValue,
-                    imageURL: nil,
+                    imageURL: imageURL,
                     category: category,
                     shopId: shopId,
                     isAvailable: true,
@@ -978,8 +1060,283 @@ struct AddEditProductView: View {
             }
 
             await MainActor.run {
+                isUploading = false
                 dismiss()
             }
+        }
+    }
+
+    private func uploadProductImage(_ image: UIImage) async -> String? {
+        guard let imageData = image.jpegData(compressionQuality: 0.7) else { return nil }
+
+        do {
+            let storage = FirebaseStorage.Storage.storage()
+            let fileName = UUID().uuidString + ".jpg"
+            let ref = storage.reference().child("products/\(shopId)/\(fileName)")
+            _ = try await ref.putDataAsync(imageData, metadata: StorageMetadata(dictionary: ["contentType": "image/jpeg"]))
+            let url = try await ref.downloadURL()
+            return url.absoluteString
+        } catch {
+            return nil
+        }
+    }
+}
+
+// MARK: - Product Image Picker
+struct ProductImagePicker: UIViewControllerRepresentable {
+    @Binding var image: UIImage?
+    var sourceType: UIImagePickerController.SourceType
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = sourceType
+        picker.delegate = context.coordinator
+        picker.allowsEditing = true
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: ProductImagePicker
+        init(_ parent: ProductImagePicker) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let edited = info[.editedImage] as? UIImage {
+                parent.image = edited
+            } else if let original = info[.originalImage] as? UIImage {
+                parent.image = original
+            }
+            picker.dismiss(animated: true)
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+        }
+    }
+}
+
+// MARK: - Shop Settings View
+struct ShopSettingsView: View {
+    @EnvironmentObject var authService: AuthService
+    @StateObject private var dataService = DataService.shared
+    @Environment(\.dismiss) private var dismiss
+
+    let shopId: String
+
+    @State private var shopName = ""
+    @State private var shopDescription = ""
+    @State private var shopAddress = ""
+    @State private var selectedCategory: ShopCategory = .grocery
+    @State private var deliveryFee = ""
+    @State private var minOrderAmount = ""
+
+    @State private var selectedImage: UIImage?
+    @State private var existingImageURL: String?
+    @State private var showImageSourceSheet = false
+    @State private var imageSourceType: UIImagePickerController.SourceType = .photoLibrary
+    @State private var showImagePicker = false
+
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var showSuccess = false
+
+    var body: some View {
+        Form {
+            // Shop Photo
+            Section("Photo de la boutique") {
+                if let image = selectedImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: 200)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                        .cornerRadius(12)
+                        .onTapGesture { showImageSourceSheet = true }
+                } else if let urlString = existingImageURL, !urlString.isEmpty {
+                    AsyncImage(url: URL(string: urlString)) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(height: 200)
+                                .frame(maxWidth: .infinity)
+                                .clipped()
+                                .cornerRadius(12)
+                        default:
+                            shopImagePlaceholder
+                        }
+                    }
+                    .onTapGesture { showImageSourceSheet = true }
+                } else {
+                    shopImagePlaceholder
+                        .onTapGesture { showImageSourceSheet = true }
+                }
+            }
+
+            // Shop Info
+            Section("Informations") {
+                TextField("Nom de la boutique", text: $shopName)
+                TextField("Description", text: $shopDescription, axis: .vertical)
+                    .lineLimit(2...5)
+                TextField("Adresse", text: $shopAddress)
+
+                Picker("Catégorie", selection: $selectedCategory) {
+                    ForEach(ShopCategory.allCases, id: \.self) { cat in
+                        Text(cat.displayName).tag(cat)
+                    }
+                }
+            }
+
+            // Delivery Settings
+            Section("Livraison") {
+                HStack {
+                    Text("Frais de livraison (€)")
+                    Spacer()
+                    TextField("2.99", text: $deliveryFee)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                }
+                HStack {
+                    Text("Commande min. (€)")
+                    Spacer()
+                    TextField("10.00", text: $minOrderAmount)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                }
+            }
+
+            // Error
+            if let error = errorMessage {
+                Section {
+                    Text(error)
+                        .foregroundColor(.red)
+                        .font(.caption)
+                }
+            }
+
+            // Save
+            Section {
+                Button(action: saveShop) {
+                    HStack {
+                        if isSaving {
+                            ProgressView()
+                        }
+                        Text("Enregistrer")
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .disabled(isSaving || shopName.isEmpty)
+            }
+        }
+        .navigationTitle("Ma boutique")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("Source de la photo", isPresented: $showImageSourceSheet) {
+            Button("Appareil photo") {
+                imageSourceType = .camera
+                showImagePicker = true
+            }
+            Button("Galerie photos") {
+                imageSourceType = .photoLibrary
+                showImagePicker = true
+            }
+            Button("Annuler", role: .cancel) {}
+        }
+        .sheet(isPresented: $showImagePicker) {
+            ProductImagePicker(image: $selectedImage, sourceType: imageSourceType)
+        }
+        .alert("Boutique mise à jour", isPresented: $showSuccess) {
+            Button("OK") { dismiss() }
+        } message: {
+            Text("Les informations de votre boutique ont été enregistrées.")
+        }
+        .task {
+            loadShopData()
+        }
+    }
+
+    private var shopImagePlaceholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(.systemGray6))
+                .frame(height: 200)
+            VStack(spacing: 8) {
+                Image(systemName: "camera.fill")
+                    .font(.title)
+                    .foregroundColor(.secondary)
+                Text("Ajouter une photo")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private func loadShopData() {
+        guard let shop = dataService.getShop(id: shopId) else { return }
+        shopName = shop.name
+        shopDescription = shop.description
+        shopAddress = shop.address
+        selectedCategory = shop.category
+        existingImageURL = shop.imageURL
+        deliveryFee = String(format: "%.2f", shop.deliveryFee)
+        minOrderAmount = String(format: "%.2f", shop.minOrderAmount)
+    }
+
+    private func saveShop() {
+        isSaving = true
+        errorMessage = nil
+
+        Task {
+            do {
+                var imageURL = existingImageURL ?? ""
+
+                // Upload new image if selected
+                if let image = selectedImage {
+                    if let uploadedURL = await uploadShopImage(image) {
+                        imageURL = uploadedURL
+                    }
+                }
+
+                let data: [String: Any] = [
+                    "name": shopName,
+                    "description": shopDescription,
+                    "address": shopAddress,
+                    "category": selectedCategory.rawValue,
+                    "imageURL": imageURL,
+                    "deliveryFee": Double(deliveryFee.replacingOccurrences(of: ",", with: ".")) ?? 2.99,
+                    "minOrderAmount": Double(minOrderAmount.replacingOccurrences(of: ",", with: ".")) ?? 10.0
+                ]
+
+                try await dataService.updateShop(shopId: shopId, data: data)
+                showSuccess = true
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isSaving = false
+        }
+    }
+
+    private func uploadShopImage(_ image: UIImage) async -> String? {
+        guard let imageData = image.jpegData(compressionQuality: 0.7) else { return nil }
+
+        do {
+            let storage = FirebaseStorage.Storage.storage()
+            let fileName = "shop_photo.jpg"
+            let ref = storage.reference().child("shops/\(shopId)/\(fileName)")
+            let metadata = StorageMetadata()
+            metadata.contentType = "image/jpeg"
+            _ = try await ref.putDataAsync(imageData, metadata: metadata)
+            let url = try await ref.downloadURL()
+            return url.absoluteString
+        } catch {
+            return nil
         }
     }
 }
