@@ -7,7 +7,7 @@ struct APIConfig {
     // Use your Mac's local IP (visible in `pnpm dev` output under "Network:")
     static let baseURL = "http://192.168.1.141:3000/api"
     #else
-    static let baseURL = "https://pec5a.vercel.app/api"
+    static let baseURL = "https://pec5a-kaysv2-hm7i.vercel.app/api"
     #endif
 
     static let timeout: TimeInterval = 30
