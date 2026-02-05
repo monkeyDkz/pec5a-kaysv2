@@ -578,7 +578,7 @@ export default function UsersPage() {
               <Label htmlFor="role">Role</Label>
               <Select
                 value={newUserData.role}
-                onValueChange={(value) => setNewUserData({ ...newUserData, role: value })}
+                onValueChange={(value) => setNewUserData({ ...newUserData, role: value as "admin" | "merchant" | "driver" | "user" })}
               >
                 <SelectTrigger>
                   <SelectValue />

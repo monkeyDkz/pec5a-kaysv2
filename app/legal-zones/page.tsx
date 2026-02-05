@@ -34,14 +34,16 @@ export default function LegalZonesPage() {
 
   const selectedZone = useMemo(() => zones.find((zone) => zone.id === selectedZoneId) || null, [zones, selectedZoneId])
 
-  const handleSaveZones = async (newZones: Zone[]) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleSaveZones = async (newZones: any[]) => {
     try {
       setIsSavingZones(true)
       await saveAllZones(
         newZones.map((zone) => ({
           ...zone,
+          color: zone.color || (zone.type === "delivery" ? "#10b981" : "#ef4444"),
           active: zone.active ?? true,
-        }))
+        })) as Zone[]
       )
       toast({
         title: t("language") === "fr" ? "Zones sauvegardées" : "Zones saved",

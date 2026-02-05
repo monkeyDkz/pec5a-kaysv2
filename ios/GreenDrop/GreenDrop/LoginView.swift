@@ -40,6 +40,8 @@ struct LoginView: View {
                             .padding()
                             .background(Color(.systemGray6))
                             .cornerRadius(12)
+                            .accessibilityLabel("Adresse email")
+                            .accessibilityHint("Entrez votre adresse email")
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -51,6 +53,8 @@ struct LoginView: View {
                             .padding()
                             .background(Color(.systemGray6))
                             .cornerRadius(12)
+                            .accessibilityLabel("Mot de passe")
+                            .accessibilityHint("Entrez votre mot de passe")
                     }
                 }
                 .padding(.horizontal)
@@ -114,6 +118,28 @@ struct LoginView: View {
                 }
                 .padding(.horizontal)
 
+                // Google Sign-In Button
+                Button(action: loginWithGoogle) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "globe")
+                            .font(.title3)
+                        Text("Continuer avec Google")
+                            .fontWeight(.medium)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.white)
+                    .foregroundColor(.primary)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color(.systemGray4), lineWidth: 1)
+                    )
+                }
+                .disabled(isLoading)
+                .padding(.horizontal)
+                .accessibilityLabel("Se connecter avec Google")
+
                 // Demo Accounts
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Comptes de test")
@@ -162,6 +188,19 @@ struct LoginView: View {
                 print("✅ Login successful")
             } catch {
                 print("❌ Login failed: \(error.localizedDescription)")
+            }
+            isLoading = false
+        }
+    }
+
+    private func loginWithGoogle() {
+        isLoading = true
+        Task {
+            do {
+                try await authService.signInWithGoogle()
+                print("✅ Google login successful")
+            } catch {
+                print("❌ Google login failed: \(error.localizedDescription)")
             }
             isLoading = false
         }

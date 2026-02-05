@@ -71,6 +71,8 @@ export function Sidebar() {
 
   return (
     <aside
+      role="navigation"
+      aria-label="Menu principal"
       className={cn(
         "fixed left-0 top-0 z-40 h-screen border-r border-sidebar-border bg-sidebar transition-all duration-300",
         collapsed ? "w-16" : "w-64",
@@ -83,7 +85,7 @@ export function Sidebar() {
         {!collapsed && <span className="font-semibold text-lg text-sidebar-foreground">GreenDrop</span>}
       </div>
 
-      <nav className="flex-1 space-y-6 p-4">
+      <nav className="flex-1 space-y-6 p-4" aria-label="Navigation administration">
         {navigationGroups.map((group) => (
           <div key={group.title}>
             {!collapsed && (
@@ -97,7 +99,7 @@ export function Sidebar() {
                 const Icon = item.icon
 
                 return (
-                  <Link key={item.href} href={item.href}>
+                  <Link key={item.href} href={item.href} aria-current={isActive ? "page" : undefined}>
                     <Button
                       variant={isActive ? "default" : "ghost"}
                       className={cn(
@@ -105,8 +107,9 @@ export function Sidebar() {
                         collapsed && "justify-center px-2",
                         isActive && "bg-primary text-primary-foreground hover:bg-primary/90",
                       )}
+                      aria-label={collapsed ? t(item.label) : undefined}
                     >
-                      <Icon className="h-4 w-4 shrink-0" />
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                       {!collapsed && <span>{t(item.label)}</span>}
                     </Button>
                   </Link>
@@ -118,7 +121,7 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-sidebar-border p-4">
-        <Button variant="ghost" size="icon" onClick={() => setCollapsed(!collapsed)} className="w-full">
+        <Button variant="ghost" size="icon" onClick={() => setCollapsed(!collapsed)} className="w-full" aria-label={collapsed ? "Ouvrir le menu" : "Réduire le menu"}>
           {collapsed ? (
             <ChevronRight className="h-4 w-4" />
           ) : (

@@ -55,6 +55,13 @@ export function VerificationCard({
     business: "Business License",
   }
 
+  const documentTypeLabels: Record<string, string> = {
+    id_card: "Carte d'identité",
+    passport: "Passeport",
+    driving_license: "Permis de conduire",
+    residence_permit: "Titre de séjour",
+  }
+
   const statusColors = {
     pending: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20",
     approved: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
@@ -126,6 +133,24 @@ export function VerificationCard({
               {verification.type}
             </Badge>
           </div>
+          {(verification.firstName || verification.lastName) && (
+            <div className="text-sm space-y-1">
+              <p className="font-medium">
+                {verification.firstName} {verification.lastName}
+              </p>
+              {verification.documentType && (
+                <p className="text-xs text-muted-foreground">
+                  {documentTypeLabels[verification.documentType] || verification.documentType}
+                  {verification.documentNumber && ` — N° ${verification.documentNumber}`}
+                </p>
+              )}
+              {verification.dateOfBirth && (
+                <p className="text-xs text-muted-foreground">
+                  Date de naissance: {new Date(verification.dateOfBirth).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+          )}
           <div className="text-xs text-muted-foreground flex items-center gap-2">
             <Clock className="h-3.5 w-3.5" />
             Submitted {formatDateTime(verification.submittedAt)}
@@ -249,6 +274,30 @@ export function VerificationCard({
                 <div className="text-sm font-semibold">Verification Metadata</div>
                 <Separator className="my-3" />
                 <dl className="space-y-2">
+                  {verification.firstName && (
+                    <div className="flex items-center justify-between text-xs">
+                      <dt className="text-muted-foreground">Name</dt>
+                      <dd className="font-medium">{verification.firstName} {verification.lastName}</dd>
+                    </div>
+                  )}
+                  {verification.dateOfBirth && (
+                    <div className="flex items-center justify-between text-xs">
+                      <dt className="text-muted-foreground">Date of Birth</dt>
+                      <dd className="font-medium">{new Date(verification.dateOfBirth).toLocaleDateString()}</dd>
+                    </div>
+                  )}
+                  {verification.documentType && (
+                    <div className="flex items-center justify-between text-xs">
+                      <dt className="text-muted-foreground">Document Type</dt>
+                      <dd className="font-medium">{documentTypeLabels[verification.documentType] || verification.documentType}</dd>
+                    </div>
+                  )}
+                  {verification.documentNumber && (
+                    <div className="flex items-center justify-between text-xs">
+                      <dt className="text-muted-foreground">Document N°</dt>
+                      <dd className="font-medium">{verification.documentNumber}</dd>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-xs">
                     <dt className="text-muted-foreground">Submitted</dt>
                     <dd className="font-medium">{formatDateTime(verification.submittedAt)}</dd>

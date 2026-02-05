@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import FirebaseFirestore
+import FirebaseStorage
 
 // MARK: - KYC Service
 @MainActor
@@ -248,17 +249,17 @@ final class KYCService: ObservableObject {
     }
 
     private func uploadImage(_ image: UIImage, path: String) async throws -> String {
-        // In production, upload to Firebase Storage
-        // For demo, return a placeholder URL
         guard let imageData = image.jpegData(compressionQuality: 0.7) else {
             throw KYCError.imageProcessingFailed
         }
 
-        // Simulate upload delay
-        try await Task.sleep(nanoseconds: 500_000_000)
+        let storageRef = Storage.storage().reference().child(path)
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
 
-        // Return placeholder - in production this would be the Firebase Storage URL
-        return "https://storage.example.com/\(path)"
+        let _ = try await storageRef.putData(imageData, metadata: metadata)
+        let downloadURL = try await storageRef.downloadURL()
+        return downloadURL.absoluteString
     }
 
     // For demo/testing - simulate approval

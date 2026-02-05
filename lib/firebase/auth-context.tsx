@@ -9,6 +9,8 @@ import {
 } from "react"
 import {
   signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   sendPasswordResetEmail,
@@ -28,12 +30,15 @@ interface AuthContextType {
   loading: boolean
   error: string | null
   signIn: (email: string, password: string) => Promise<void>
+  signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
   confirmReset: (oobCode: string, newPassword: string) => Promise<void>
   sendVerificationEmail: () => Promise<void>
   clearError: () => void
 }
+
+const googleProvider = new GoogleAuthProvider()
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
@@ -142,6 +147,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Sign in with Google OAuth
+  const signInWithGoogleHandler = async () => {
+    try {
+      setError(null)
+      setLoading(true)
+
+      const userCredential = await signInWithPopup(auth, googleProvider)
+      let profile = await fetchUserProfile(userCredential.user.uid)
+
+      if (!profile) {
+        profile = await createUserProfile(userCredential.user)
+      }
+
+      // Check if user has admin or merchant role (allowed for web panel)
+      if (profile && !['admin', 'merchant'].includes(profile.role)) {
+        await firebaseSignOut(auth)
+        throw new Error("Accès non autorisé. Seuls les administrateurs et marchands peuvent se connecter au panneau web.")
+      }
+
+      if (userCredential.user) {
+        await logLogin(userCredential.user.uid, userCredential.user.email || "")
+      }
+    } catch (err: any) {
+      if (err.code === "auth/popup-closed-by-user") {
+        setLoading(false)
+        return
+      }
+      const errorMessage = err.code ? getAuthErrorMessage(err.code) : err.message
+      setError(errorMessage)
+      throw new Error(errorMessage)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Sign out
   const signOut = async () => {
     try {
@@ -205,6 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         error,
         signIn,
+        signInWithGoogle: signInWithGoogleHandler,
         signOut,
         resetPassword,
         confirmReset,

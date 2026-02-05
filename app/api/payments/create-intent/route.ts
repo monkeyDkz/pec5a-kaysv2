@@ -84,7 +84,7 @@ export const POST = withAuth(async (request: NextRequest, auth) => {
   }
 
   const paymentIntent = await stripe.paymentIntents.create(
-    paymentIntentParams as Parameters<typeof stripe.paymentIntents.create>[0]
+    paymentIntentParams as unknown as Parameters<typeof stripe.paymentIntents.create>[0]
   );
 
   return NextResponse.json({

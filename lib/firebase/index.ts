@@ -123,5 +123,21 @@ export {
   type ActivityLog,
 } from "./services/activity-logs"
 
+// Driver Services
+export {
+  subscribeToDrivers,
+  createDriver,
+  updateDriverStatus,
+  updateDriverLocation,
+  assignDriverToOrder,
+  releaseDriver,
+} from "./services/drivers"
+
+// Driver Matching Services
+export {
+  findBestDrivers,
+  autoAssignDriver,
+} from "./services/driver-matching"
+
 // Seed function
 export { seedDatabase } from "./seed"

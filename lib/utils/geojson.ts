@@ -76,7 +76,7 @@ export const geoJSONToLegalZones = (collection: GeoJSONFeatureCollection): Legal
     return []
   }
 
-  return collection.features
+  return (collection.features
     .map((feature) => {
       if (
         !feature ||
@@ -109,5 +109,5 @@ export const geoJSONToLegalZones = (collection: GeoJSONFeatureCollection): Legal
         coordinates,
       }
     })
-    .filter((zone): zone is LegalZone => zone !== null)
+    .filter((zone) => zone !== null)) as LegalZone[]
 }

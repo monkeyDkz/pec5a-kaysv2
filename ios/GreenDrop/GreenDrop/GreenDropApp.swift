@@ -1,6 +1,8 @@
 import SwiftUI
 import SafariServices
 import FirebaseCore
+import FirebaseCrashlytics
+import GoogleSignIn
 
 @main
 struct GreenDropApp: App {
@@ -8,6 +10,8 @@ struct GreenDropApp: App {
 
     init() {
         FirebaseApp.configure()
+        // Enable Crashlytics for crash reporting
+        Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(true)
     }
 
     var body: some Scene {
@@ -17,6 +21,9 @@ struct GreenDropApp: App {
                 .environmentObject(appState.authService)
                 .environmentObject(appState.cartManager)
                 .environmentObject(appState.dataService)
+                .onOpenURL { url in
+                    GIDSignIn.sharedInstance.handle(url)
+                }
         }
     }
 }
@@ -200,23 +207,29 @@ struct ClientTabView: View {
             ClientHomeView()
                 .tabItem { Label("Accueil", systemImage: "house.fill") }
                 .tag(0)
+                .accessibilityLabel("Onglet Accueil")
 
             FavoritesView()
                 .tabItem { Label("Favoris", systemImage: "heart.fill") }
                 .tag(1)
+                .accessibilityLabel("Onglet Favoris")
 
             ClientOrdersView()
                 .tabItem { Label("Commandes", systemImage: "bag.fill") }
                 .tag(2)
+                .accessibilityLabel("Onglet Commandes")
 
             CartView()
                 .tabItem { Label("Panier", systemImage: "cart.fill") }
                 .tag(3)
                 .badge(cartManager.cart.itemCount > 0 ? cartManager.cart.itemCount : 0)
+                .accessibilityLabel("Onglet Panier")
+                .accessibilityHint(cartManager.cart.itemCount > 0 ? "\(cartManager.cart.itemCount) articles dans le panier" : "Panier vide")
 
             ProfileView()
                 .tabItem { Label("Profil", systemImage: "person.fill") }
                 .tag(4)
+                .accessibilityLabel("Onglet Profil")
         }
         .tint(Color(hex: "#22C55E"))
     }
@@ -227,10 +240,13 @@ struct DriverTabView: View {
         TabView {
             DriverDashboardView()
                 .tabItem { Label("Dashboard", systemImage: "speedometer") }
+                .accessibilityLabel("Onglet Dashboard chauffeur")
             DriverDeliveriesView()
                 .tabItem { Label("Livraisons", systemImage: "shippingbox.fill") }
+                .accessibilityLabel("Onglet Livraisons")
             ProfileView()
                 .tabItem { Label("Profil", systemImage: "person.fill") }
+                .accessibilityLabel("Onglet Profil")
         }
         .tint(Color(hex: "#22C55E"))
     }
@@ -241,12 +257,16 @@ struct MerchantTabView: View {
         TabView {
             MerchantDashboardView()
                 .tabItem { Label("Dashboard", systemImage: "chart.bar.fill") }
+                .accessibilityLabel("Onglet Dashboard marchand")
             MerchantOrdersView()
                 .tabItem { Label("Commandes", systemImage: "list.clipboard.fill") }
+                .accessibilityLabel("Onglet Commandes")
             MerchantProductsView()
                 .tabItem { Label("Produits", systemImage: "cube.box.fill") }
+                .accessibilityLabel("Onglet Produits")
             ProfileView()
                 .tabItem { Label("Profil", systemImage: "person.fill") }
+                .accessibilityLabel("Onglet Profil")
         }
         .tint(Color(hex: "#22C55E"))
     }

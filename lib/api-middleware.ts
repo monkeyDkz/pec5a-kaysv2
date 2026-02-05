@@ -1,9 +1,65 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb } from "./firebase-admin";
+import crypto from "crypto";
 
 export interface AuthenticatedRequest extends NextRequest {
   userId?: string;
   userRole?: "admin" | "user" | "merchant" | "driver";
+}
+
+// CSRF Protection: secret key for token generation
+const CSRF_SECRET = process.env.CSRF_SECRET || crypto.randomBytes(32).toString("hex");
+
+/**
+ * Generate a CSRF token based on session/user ID
+ */
+export function generateCsrfToken(sessionId: string): string {
+  const hmac = crypto.createHmac("sha256", CSRF_SECRET);
+  hmac.update(sessionId + ":" + Math.floor(Date.now() / 3600000)); // 1h window
+  return hmac.digest("hex");
+}
+
+/**
+ * Verify a CSRF token
+ */
+export function verifyCsrfToken(token: string, sessionId: string): boolean {
+  const currentHour = Math.floor(Date.now() / 3600000);
+  // Check current hour and previous hour to handle window boundary
+  for (const hour of [currentHour, currentHour - 1]) {
+    const hmac = crypto.createHmac("sha256", CSRF_SECRET);
+    hmac.update(sessionId + ":" + hour);
+    const expected = hmac.digest("hex");
+    if (crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Middleware to validate CSRF token on state-changing requests (POST, PUT, PATCH, DELETE)
+ */
+export function withCsrfProtection(
+  handler: (request: NextRequest, auth: { userId: string; userRole: string }) => Promise<NextResponse>,
+  options?: { requiredRole?: "admin" | "merchant" | "driver" }
+) {
+  return withAuth(async (request, auth) => {
+    const method = request.method.toUpperCase();
+
+    // Only validate CSRF on state-changing methods
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+      const csrfToken = request.headers.get("X-CSRF-Token");
+
+      if (!csrfToken || !verifyCsrfToken(csrfToken, auth.userId)) {
+        return NextResponse.json(
+          { error: "Forbidden", message: "Token CSRF invalide ou manquant" },
+          { status: 403 }
+        );
+      }
+    }
+
+    return handler(request, auth);
+  }, options);
 }
 
 /**

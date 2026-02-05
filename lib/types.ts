@@ -180,6 +180,12 @@ export interface Verification {
   attachments?: VerificationAttachment[]
   history?: VerificationHistoryEntry[]
   rejectionReason?: string | null
+  // KYC-specific fields from iOS app
+  firstName?: string
+  lastName?: string
+  dateOfBirth?: string
+  documentType?: string
+  documentNumber?: string
 }
 
 export interface Dispute {

@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { DollarSign, Users, FileCheck, AlertCircle } from "lucide-react"
 import { AdminLayout } from "@/components/admin/admin-layout"
 import { KPICard } from "@/components/admin/kpi-card"
@@ -10,9 +11,45 @@ import { ActivityLog } from "@/components/admin/activity-log"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useLanguage } from "@/lib/language-context"
+import { getOrderStats } from "@/lib/firebase/services/orders"
+import { getUsers } from "@/lib/firebase/services/users"
+import { getVerificationStats } from "@/lib/firebase/services/verifications"
+import { getDisputeStats } from "@/lib/firebase/services/disputes"
 
 export default function DashboardPage() {
   const { t } = useLanguage()
+  const [revenue, setRevenue] = useState("--")
+  const [activeUsers, setActiveUsers] = useState("--")
+  const [pendingVerifications, setPendingVerifications] = useState("--")
+  const [openDisputes, setOpenDisputes] = useState("--")
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const [orderStats, users, verificationStats, disputeStats] = await Promise.all([
+          getOrderStats(),
+          getUsers(),
+          getVerificationStats(),
+          getDisputeStats(),
+        ])
+
+        const revenueFormatted = orderStats.totalRevenue.toLocaleString("en-US", {
+          style: "currency",
+          currency: "EUR",
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        })
+        setRevenue(revenueFormatted)
+        setActiveUsers(users.length.toLocaleString())
+        setPendingVerifications(verificationStats.pending.toString())
+        setOpenDisputes(disputeStats.open.toString())
+      } catch (error) {
+        console.error("Failed to load dashboard stats:", error)
+      }
+    }
+
+    loadStats()
+  }, [])
 
   return (
     <AdminLayout>
@@ -25,31 +62,23 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <KPICard
             title={t("totalRevenue")}
-            value="$45,231"
-            change={12.5}
+            value={revenue}
             icon={<DollarSign className="h-4 w-4" />}
-            sparklineData={[2400, 2800, 2600, 3200, 2900, 3400, 3800, 4200]}
           />
           <KPICard
             title={t("activeUsers")}
-            value="2,834"
-            change={8.2}
+            value={activeUsers}
             icon={<Users className="h-4 w-4" />}
-            sparklineData={[1800, 2100, 2000, 2300, 2500, 2700, 2800, 2834]}
           />
           <KPICard
             title={t("pendingVerifications")}
-            value="23"
-            change={-5.4}
+            value={pendingVerifications}
             icon={<FileCheck className="h-4 w-4" />}
-            sparklineData={[45, 38, 42, 35, 28, 25, 24, 23]}
           />
           <KPICard
             title={t("openDisputes")}
-            value="8"
-            change={-12.3}
+            value={openDisputes}
             icon={<AlertCircle className="h-4 w-4" />}
-            sparklineData={[18, 15, 14, 12, 11, 10, 9, 8]}
           />
         </div>
 

@@ -138,18 +138,97 @@ const buildHistoryEntry = (
   timestamp: serverTimestamp(),
 })
 
+// Map iOS documentType values to web type values
+const mapDocumentType = (documentType?: string): Verification["type"] => {
+  if (!documentType) return "id"
+  switch (documentType) {
+    case "id_card":
+    case "passport":
+    case "residence_permit":
+      return "id"
+    case "driving_license":
+      return "license"
+    default:
+      return "id"
+  }
+}
+
+// Build attachments from iOS individual URL fields
+const buildAttachmentsFromKYC = (
+  docId: string,
+  data: Record<string, any>
+): VerificationAttachment[] => {
+  const attachments: VerificationAttachment[] = []
+
+  if (data.documentFrontURL) {
+    attachments.push({
+      id: `${docId}-front`,
+      label: "Document (Recto)",
+      url: data.documentFrontURL,
+      mimeType: "image/jpeg",
+    })
+  }
+
+  if (data.documentBackURL) {
+    attachments.push({
+      id: `${docId}-back`,
+      label: "Document (Verso)",
+      url: data.documentBackURL,
+      mimeType: "image/jpeg",
+    })
+  }
+
+  if (data.selfieURL) {
+    attachments.push({
+      id: `${docId}-selfie`,
+      label: "Selfie",
+      url: data.selfieURL,
+      mimeType: "image/jpeg",
+    })
+  }
+
+  return attachments
+}
+
 // Convert Firestore document to Verification type
 const convertVerification = (docSnapshot: any): Verification => {
   const data = docSnapshot.data()
-  const fallbackDocumentUrl = data.documentUrl || ""
-  const attachments = normalizeAttachments(docSnapshot.id, data.attachments, fallbackDocumentUrl, data.type)
-  const history = normalizeHistoryEntries(docSnapshot.id, data.history)
+
+  // Determine type: use web `type` field, or map from iOS `documentType`
+  const verificationType: Verification["type"] = data.type || mapDocumentType(data.documentType)
+
+  // Build attachments: use web `attachments` array, or construct from iOS individual URL fields
+  const fallbackDocumentUrl = data.documentUrl || data.documentFrontURL || ""
+  let attachments: VerificationAttachment[]
+
+  if (Array.isArray(data.attachments) && data.attachments.length > 0) {
+    attachments = normalizeAttachments(docSnapshot.id, data.attachments, fallbackDocumentUrl, verificationType)
+  } else if (data.documentFrontURL || data.documentBackURL || data.selfieURL) {
+    attachments = buildAttachmentsFromKYC(docSnapshot.id, data)
+  } else {
+    attachments = normalizeAttachments(docSnapshot.id, undefined, fallbackDocumentUrl, verificationType)
+  }
+
+  // Build history: use existing history array, or create initial entry from submittedAt
+  let history = normalizeHistoryEntries(docSnapshot.id, data.history)
+  if (history.length === 0 && data.submittedAt) {
+    history = [
+      {
+        id: `${docSnapshot.id}-history-0`,
+        action: "submitted",
+        actor: data.userId || "user",
+        message: null,
+        timestamp: convertTimestampValue(data.submittedAt) || new Date().toISOString(),
+      },
+    ]
+  }
+
   const primaryDocumentUrl = fallbackDocumentUrl || attachments[0]?.url || ""
 
   return {
     id: docSnapshot.id,
     userId: data.userId,
-    type: data.type,
+    type: verificationType,
     status: data.status,
     documentUrl: primaryDocumentUrl,
     submittedAt: convertTimestampValue(data.submittedAt) || new Date().toISOString(),
@@ -158,6 +237,12 @@ const convertVerification = (docSnapshot: any): Verification => {
     attachments,
     history,
     rejectionReason: data.rejectionReason || null,
+    // KYC-specific fields
+    firstName: data.firstName,
+    lastName: data.lastName,
+    dateOfBirth: convertTimestampValue(data.dateOfBirth),
+    documentType: data.documentType,
+    documentNumber: data.documentNumber,
   }
 }
 

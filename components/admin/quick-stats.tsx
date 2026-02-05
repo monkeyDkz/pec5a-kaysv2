@@ -1,49 +1,94 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { TrendingUp, TrendingDown } from "lucide-react"
+import { getOrderStats } from "@/lib/firebase/services/orders"
+import { getVerificationStats } from "@/lib/firebase/services/verifications"
+import { getOrders } from "@/lib/firebase/services/orders"
 
 interface QuickStat {
   label: string
   value: string
   subValue: string
-  trend: "up" | "down"
-  trendValue: string
 }
 
-const stats: QuickStat[] = [
-  {
-    label: "Avg Order Value",
-    value: "$67.50",
-    subValue: "vs $62.30 last week",
-    trend: "up",
-    trendValue: "+8.3%",
-  },
-  {
-    label: "Verification Rate",
-    value: "94.2%",
-    subValue: "vs 92.1% last week",
-    trend: "up",
-    trendValue: "+2.1%",
-  },
-  {
-    label: "Response Time",
-    value: "2.4 min",
-    subValue: "vs 3.1 min last week",
-    trend: "up",
-    trendValue: "-22.6%",
-  },
-  {
-    label: "Customer Satisfaction",
-    value: "4.8/5.0",
-    subValue: "Based on 234 reviews",
-    trend: "up",
-    trendValue: "+0.3",
-  },
-]
-
 export function QuickStats() {
+  const [stats, setStats] = useState<QuickStat[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const [orderStats, verificationStats, orders] = await Promise.all([
+          getOrderStats(),
+          getVerificationStats(),
+          getOrders(),
+        ])
+
+        const nonCancelledOrders = orders.filter((o) => o.status !== "cancelled")
+        const avgOrderValue =
+          nonCancelledOrders.length > 0
+            ? orderStats.totalRevenue / nonCancelledOrders.length
+            : 0
+
+        const verificationRate =
+          verificationStats.total > 0
+            ? Math.round((verificationStats.approved / verificationStats.total) * 1000) / 10
+            : 0
+
+        setStats([
+          {
+            label: "Avg Order Value",
+            value: avgOrderValue.toLocaleString("en-US", {
+              style: "currency",
+              currency: "EUR",
+              minimumFractionDigits: 2,
+            }),
+            subValue: `Based on ${nonCancelledOrders.length} orders`,
+          },
+          {
+            label: "Verification Rate",
+            value: `${verificationRate}%`,
+            subValue: `${verificationStats.approved} of ${verificationStats.total} verified`,
+          },
+          {
+            label: "On-Time Delivery",
+            value: `${orderStats.onTimeRate}%`,
+            subValue: `${orderStats.delivered} deliveries completed`,
+          },
+          {
+            label: "Pending Orders",
+            value: orderStats.pendingShipment.toString(),
+            subValue: `${orderStats.delayedOrders} delayed`,
+          },
+        ])
+      } catch (error) {
+        console.error("Failed to load quick stats:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadStats()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <Card key={i} className="border-border/50">
+            <CardContent className="p-4">
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Loading...</p>
+                <p className="text-2xl font-bold">--</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
       {stats.map((stat) => (
@@ -51,17 +96,7 @@ export function QuickStats() {
           <CardContent className="p-4">
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">{stat.label}</p>
-              <div className="flex items-baseline justify-between">
-                <p className="text-2xl font-bold">{stat.value}</p>
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-0">
-                  {stat.trend === "up" ? (
-                    <TrendingUp className="mr-1 h-3 w-3" />
-                  ) : (
-                    <TrendingDown className="mr-1 h-3 w-3" />
-                  )}
-                  {stat.trendValue}
-                </Badge>
-              </div>
+              <p className="text-2xl font-bold">{stat.value}</p>
               <p className="text-xs text-muted-foreground">{stat.subValue}</p>
             </div>
           </CardContent>

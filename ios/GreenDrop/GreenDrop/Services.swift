@@ -4,6 +4,7 @@ import CoreLocation
 import FirebaseCore
 import FirebaseAuth
 import FirebaseFirestore
+import GoogleSignIn
 
 // MARK: - Auth Service
 @MainActor
@@ -175,6 +176,66 @@ final class AuthService: ObservableObject {
             print("SignIn error: \(error.localizedDescription)")
             isLoading = false
             errorMessage = mapAuthError(error)
+            throw error
+        }
+    }
+
+    func signInWithGoogle() async throws {
+        isLoading = true
+        errorMessage = nil
+
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootViewController = windowScene.windows.first?.rootViewController else {
+            isLoading = false
+            throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Impossible de trouver la fenêtre principale"])
+        }
+
+        guard let clientID = FirebaseApp.app()?.options.clientID else {
+            isLoading = false
+            throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Configuration Google Sign-In manquante"])
+        }
+
+        let config = GIDConfiguration(clientID: clientID)
+        GIDSignIn.sharedInstance.configuration = config
+
+        do {
+            let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootViewController)
+            guard let idToken = result.user.idToken?.tokenString else {
+                isLoading = false
+                throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Token Google manquant"])
+            }
+
+            let credential = GoogleAuthProvider.credential(
+                withIDToken: idToken,
+                accessToken: result.user.accessToken.tokenString
+            )
+
+            let authResult = try await Auth.auth().signIn(with: credential)
+            currentUser = authResult.user
+
+            if let token = try? await authResult.user.getIDToken() {
+                APIService.shared.setAuthToken(token)
+            }
+
+            await fetchUserProfile(userId: authResult.user.uid, email: authResult.user.email ?? "")
+
+            // Create user doc in Firestore if new
+            let userDoc = try? await db.collection("users").document(authResult.user.uid).getDocument()
+            if userDoc == nil || !(userDoc?.exists ?? false) {
+                let userData: [String: Any] = [
+                    "email": authResult.user.email ?? "",
+                    "name": authResult.user.displayName ?? "User",
+                    "role": "user",
+                    "status": "active",
+                    "createdAt": Timestamp(date: Date())
+                ]
+                try? await db.collection("users").document(authResult.user.uid).setData(userData)
+            }
+
+            isLoading = false
+        } catch {
+            isLoading = false
+            errorMessage = error.localizedDescription
             throw error
         }
     }
