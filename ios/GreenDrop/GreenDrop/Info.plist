@@ -64,11 +64,9 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>$(REVERSED_CLIENT_ID)</string>
+				<string>com.googleusercontent.apps.895666623258-avoh20d5cc4f5e20d7git28bfr04euv6</string>
 			</array>
 		</dict>
 	</array>
-	<key>GIDClientID</key>
-	<string>$(GID_CLIENT_ID)</string>
 </dict>
 </plist>
