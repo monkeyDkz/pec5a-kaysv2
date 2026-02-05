@@ -5,22 +5,23 @@ import { getAuth } from "firebase-admin/auth";
 
 // Initialize Firebase Admin SDK
 if (!getApps().length) {
-  // Dans Vercel, utiliser les variables d'environnement
-  const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY
-    ? process.env.FIREBASE_ADMIN_PRIVATE_KEY.replace(/\\n/g, "\n")
-    : undefined;
+  // Support both FIREBASE_ADMIN_* and FIREBASE_* variable names for flexibility
+  const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL;
+  const rawPrivateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_KEY;
+  const privateKey = rawPrivateKey?.replace(/\\n/g, "\n");
 
-  if (!privateKey || !process.env.FIREBASE_ADMIN_CLIENT_EMAIL || !process.env.FIREBASE_ADMIN_PROJECT_ID) {
+  if (!privateKey || !clientEmail || !projectId) {
     console.warn("⚠️ Firebase Admin credentials not found, using application default credentials");
     initializeApp();
   } else {
     initializeApp({
       credential: cert({
-        projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-        privateKey: privateKey,
+        projectId,
+        clientEmail,
+        privateKey,
       }),
-      storageBucket: `${process.env.FIREBASE_ADMIN_PROJECT_ID}.appspot.com`,
+      storageBucket: `${projectId}.appspot.com`,
     });
   }
 }

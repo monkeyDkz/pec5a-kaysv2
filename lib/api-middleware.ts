@@ -15,13 +15,18 @@ export async function verifyAuth(request: NextRequest): Promise<{
 } | null> {
   try {
     const authHeader = request.headers.get("Authorization");
-    
+
+    console.log("[Auth] Header present:", !!authHeader, authHeader ? `Bearer ${authHeader.substring(7, 20)}...` : "none");
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.log("[Auth] No valid Authorization header");
       return null;
     }
 
     const token = authHeader.split("Bearer ")[1];
+    console.log("[Auth] Verifying token...");
     const decodedToken = await adminAuth.verifyIdToken(token);
+    console.log("[Auth] Token verified for uid:", decodedToken.uid);
     
     // Récupérer le rôle de l'utilisateur depuis Firestore
     const userDoc = await adminDb.collection("users").doc(decodedToken.uid).get();
@@ -36,8 +41,8 @@ export async function verifyAuth(request: NextRequest): Promise<{
       userId: decodedToken.uid,
       userRole: userData?.role || "user",
     };
-  } catch (error) {
-    console.error("Auth error:", error);
+  } catch (error: any) {
+    console.error("[Auth] Verification failed:", error.code || error.message);
     return null;
   }
 }

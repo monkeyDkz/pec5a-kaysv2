@@ -7,11 +7,11 @@ import { adminDb } from "@/lib/firebase-admin";
  */
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   return withAuth(async (req: NextRequest, auth) => {
     try {
-      const shopId = context.params.id;
+      const { id: shopId } = await context.params;
 
     // Vérifier que la boutique existe
     const shopDoc = await adminDb.collection("shops").doc(shopId).get();

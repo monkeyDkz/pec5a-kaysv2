@@ -1,0 +1,679 @@
+import SwiftUI
+
+// MARK: - Settings View
+struct SettingsView: View {
+    @StateObject private var settings = AppSettingsManager.shared
+    @EnvironmentObject var authService: AuthService
+    @State private var showAddresses = false
+    @State private var showLegal = false
+    @State private var showSupport = false
+    @State private var showDeleteAccount = false
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        NavigationStack {
+            List {
+                // Account Section
+                Section("Compte") {
+                    NavigationLink(destination: AddressesListView()) {
+                        SettingsRow(icon: "mappin.circle.fill", title: "Mes adresses", color: "#22C55E")
+                    }
+
+                    NavigationLink(destination: PaymentMethodsView()) {
+                        SettingsRow(icon: "creditcard.fill", title: "Moyens de paiement", color: "#3B82F6")
+                    }
+
+                    NavigationLink(destination: OrderHistoryView()) {
+                        SettingsRow(icon: "clock.fill", title: "Historique des commandes", color: "#8B5CF6")
+                    }
+                }
+
+                // Preferences Section
+                Section("Préférences") {
+                    Toggle(isOn: $settings.isDarkMode) {
+                        SettingsRow(icon: "moon.fill", title: "Mode sombre", color: "#6366F1")
+                    }
+                    .tint(Color(hex: "#22C55E"))
+
+                    Toggle(isOn: $settings.notificationsEnabled) {
+                        SettingsRow(icon: "bell.fill", title: "Notifications", color: "#F59E0B")
+                    }
+                    .tint(Color(hex: "#22C55E"))
+
+                    Toggle(isOn: $settings.soundEnabled) {
+                        SettingsRow(icon: "speaker.wave.2.fill", title: "Sons", color: "#EC4899")
+                    }
+                    .tint(Color(hex: "#22C55E"))
+
+                    NavigationLink(destination: LanguageSelectionView()) {
+                        HStack {
+                            SettingsRow(icon: "globe", title: "Langue", color: "#06B6D4")
+                            Spacer()
+                            Text(settings.availableLanguages.first { $0.0 == settings.language }?.1 ?? "Français")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
+                // Support Section
+                Section("Aide & Support") {
+                    NavigationLink(destination: FAQView()) {
+                        SettingsRow(icon: "questionmark.circle.fill", title: "FAQ", color: "#22C55E")
+                    }
+
+                    NavigationLink(destination: ContactSupportView()) {
+                        SettingsRow(icon: "envelope.fill", title: "Contacter le support", color: "#3B82F6")
+                    }
+
+                    NavigationLink(destination: ReportProblemView()) {
+                        SettingsRow(icon: "exclamationmark.triangle.fill", title: "Signaler un problème", color: "#F59E0B")
+                    }
+                }
+
+                // Legal Section
+                Section("Légal") {
+                    NavigationLink(destination: TermsOfServiceView()) {
+                        SettingsRow(icon: "doc.text.fill", title: "Conditions d'utilisation", color: "#6B7280")
+                    }
+
+                    NavigationLink(destination: PrivacyPolicyView()) {
+                        SettingsRow(icon: "hand.raised.fill", title: "Politique de confidentialité", color: "#6B7280")
+                    }
+
+                    NavigationLink(destination: LicensesView()) {
+                        SettingsRow(icon: "scroll.fill", title: "Licences", color: "#6B7280")
+                    }
+                }
+
+                // Danger Zone
+                Section {
+                    Button(action: { showDeleteAccount = true }) {
+                        HStack {
+                            Image(systemName: "trash.fill")
+                                .foregroundColor(.red)
+                            Text("Supprimer mon compte")
+                                .foregroundColor(.red)
+                        }
+                    }
+                }
+
+                // App Info
+                Section {
+                    HStack {
+                        Text("Version")
+                        Spacer()
+                        Text("1.0.0 (Build 1)")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Paramètres")
+            .preferredColorScheme(settings.isDarkMode ? .dark : .light)
+            .alert("Supprimer le compte", isPresented: $showDeleteAccount) {
+                Button("Annuler", role: .cancel) {}
+                Button("Supprimer", role: .destructive) {
+                    deleteAccount()
+                }
+            } message: {
+                Text("Cette action est irréversible. Toutes vos données seront supprimées.")
+            }
+        }
+    }
+
+    func deleteAccount() {
+        // In production, this would call the backend to delete the account
+        Task {
+            try? authService.signOut()
+        }
+    }
+}
+
+struct SettingsRow: View {
+    let icon: String
+    let title: String
+    let color: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(Color(hex: color))
+                .frame(width: 24)
+            Text(title)
+        }
+    }
+}
+
+// MARK: - Addresses List View
+struct AddressesListView: View {
+    @StateObject private var addressManager = AddressManager.shared
+    @State private var showAddAddress = false
+
+    var body: some View {
+        List {
+            ForEach(addressManager.addresses) { address in
+                AddressRow(address: address)
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            addressManager.deleteAddress(id: address.id)
+                        } label: {
+                            Label("Supprimer", systemImage: "trash")
+                        }
+
+                        Button {
+                            addressManager.setDefault(id: address.id)
+                        } label: {
+                            Label("Par défaut", systemImage: "star")
+                        }
+                        .tint(.orange)
+                    }
+            }
+
+            Button(action: { showAddAddress = true }) {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(Color(hex: "#22C55E"))
+                    Text("Ajouter une adresse")
+                        .foregroundColor(Color(hex: "#22C55E"))
+                }
+            }
+        }
+        .navigationTitle("Mes adresses")
+        .sheet(isPresented: $showAddAddress) {
+            AddEditAddressView()
+        }
+        .overlay {
+            if addressManager.addresses.isEmpty {
+                ContentUnavailableView(
+                    "Aucune adresse",
+                    systemImage: "mappin.slash",
+                    description: Text("Ajoutez une adresse pour faciliter vos commandes")
+                )
+            }
+        }
+    }
+}
+
+struct AddressRow: View {
+    let address: AddressManager.SavedAddress
+    @StateObject private var addressManager = AddressManager.shared
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(Color(hex: "#22C55E").opacity(0.15))
+                    .frame(width: 44, height: 44)
+
+                Image(systemName: addressIcon)
+                    .foregroundColor(Color(hex: "#22C55E"))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(address.label)
+                        .font(.headline)
+
+                    if address.isDefault {
+                        Text("Par défaut")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(hex: "#22C55E").opacity(0.15))
+                            .foregroundColor(Color(hex: "#22C55E"))
+                            .cornerRadius(4)
+                    }
+                }
+
+                Text(address.fullAddress)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+
+                if let instructions = address.instructions, !instructions.isEmpty {
+                    Text(instructions)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .italic()
+                }
+            }
+
+            Spacer()
+
+            if addressManager.selectedAddressId == address.id {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(Color(hex: "#22C55E"))
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            addressManager.selectAddress(id: address.id)
+        }
+    }
+
+    var addressIcon: String {
+        switch address.label.lowercased() {
+        case "maison", "home": return "house.fill"
+        case "travail", "work", "bureau": return "building.2.fill"
+        default: return "mappin.circle.fill"
+        }
+    }
+}
+
+// MARK: - Add/Edit Address View
+struct AddEditAddressView: View {
+    @StateObject private var addressManager = AddressManager.shared
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var label = ""
+    @State private var street = ""
+    @State private var city = ""
+    @State private var postalCode = ""
+    @State private var instructions = ""
+    @State private var selectedLabel = "Maison"
+
+    let labelOptions = ["Maison", "Travail", "Autre"]
+
+    var isValid: Bool {
+        !street.isEmpty && !city.isEmpty && !postalCode.isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Type d'adresse") {
+                    Picker("Label", selection: $selectedLabel) {
+                        ForEach(labelOptions, id: \.self) { option in
+                            Text(option).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if selectedLabel == "Autre" {
+                        TextField("Nom personnalisé", text: $label)
+                    }
+                }
+
+                Section("Adresse") {
+                    TextField("Rue et numéro", text: $street)
+                    TextField("Ville", text: $city)
+                    TextField("Code postal", text: $postalCode)
+                        .keyboardType(.numberPad)
+                }
+
+                Section("Instructions (optionnel)") {
+                    TextField("Ex: Digicode 1234, 3ème étage", text: $instructions)
+                }
+            }
+            .navigationTitle("Nouvelle adresse")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Enregistrer") {
+                        saveAddress()
+                    }
+                    .disabled(!isValid)
+                }
+            }
+        }
+    }
+
+    func saveAddress() {
+        let finalLabel = selectedLabel == "Autre" ? label : selectedLabel
+        let address = addressManager.createAddress(
+            label: finalLabel,
+            street: street,
+            city: city,
+            postalCode: postalCode,
+            instructions: instructions.isEmpty ? nil : instructions
+        )
+        addressManager.addAddress(address)
+        dismiss()
+    }
+}
+
+// MARK: - Address Selection Sheet (for Checkout)
+struct AddressSelectionSheet: View {
+    @StateObject private var addressManager = AddressManager.shared
+    @Environment(\.dismiss) private var dismiss
+    @State private var showAddAddress = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(addressManager.addresses) { address in
+                    Button(action: {
+                        addressManager.selectAddress(id: address.id)
+                        dismiss()
+                    }) {
+                        HStack {
+                            AddressRow(address: address)
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+
+                Button(action: { showAddAddress = true }) {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(Color(hex: "#22C55E"))
+                        Text("Ajouter une adresse")
+                            .foregroundColor(Color(hex: "#22C55E"))
+                    }
+                }
+            }
+            .navigationTitle("Adresse de livraison")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Fermer") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $showAddAddress) {
+                AddEditAddressView()
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+// MARK: - Language Selection View
+struct LanguageSelectionView: View {
+    @StateObject private var settings = AppSettingsManager.shared
+
+    var body: some View {
+        List {
+            ForEach(settings.availableLanguages, id: \.0) { code, name in
+                Button(action: { settings.language = code }) {
+                    HStack {
+                        Text(name)
+                        Spacer()
+                        if settings.language == code {
+                            Image(systemName: "checkmark")
+                                .foregroundColor(Color(hex: "#22C55E"))
+                        }
+                    }
+                }
+                .foregroundColor(.primary)
+            }
+        }
+        .navigationTitle("Langue")
+    }
+}
+
+// MARK: - FAQ View
+struct FAQView: View {
+    let faqs: [(String, String)] = [
+        ("Comment passer une commande ?", "Parcourez les boutiques, ajoutez des articles à votre panier, puis validez votre commande en choisissant une adresse de livraison."),
+        ("Comment suivre ma livraison ?", "Allez dans l'onglet Commandes et sélectionnez votre commande active pour voir son statut en temps réel sur la carte."),
+        ("Comment annuler une commande ?", "Vous pouvez annuler une commande tant qu'elle n'a pas été préparée. Allez dans les détails de la commande et appuyez sur Annuler."),
+        ("Comment contacter le livreur ?", "Une fois votre commande en cours de livraison, vous pouvez contacter le livreur via le chat intégré ou par téléphone."),
+        ("Comment ajouter un code promo ?", "Lors du checkout, entrez votre code promo dans le champ dédié et appuyez sur Appliquer."),
+        ("Comment modifier mon adresse ?", "Allez dans Paramètres > Mes adresses pour ajouter, modifier ou supprimer des adresses."),
+        ("Comment laisser un pourboire ?", "Vous pouvez ajouter un pourboire lors du checkout ou après la livraison dans les détails de la commande."),
+        ("Comment supprimer mon compte ?", "Allez dans Paramètres et faites défiler jusqu'à 'Supprimer mon compte'. Cette action est irréversible.")
+    ]
+
+    var body: some View {
+        List {
+            ForEach(faqs, id: \.0) { question, answer in
+                DisclosureGroup {
+                    Text(answer)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 8)
+                } label: {
+                    Text(question)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                }
+            }
+        }
+        .navigationTitle("FAQ")
+    }
+}
+
+// MARK: - Contact Support View
+struct ContactSupportView: View {
+    @State private var subject = ""
+    @State private var message = ""
+    @State private var showSuccess = false
+
+    var body: some View {
+        Form {
+            Section("Sujet") {
+                TextField("Décrivez brièvement votre problème", text: $subject)
+            }
+
+            Section("Message") {
+                TextEditor(text: $message)
+                    .frame(minHeight: 150)
+            }
+
+            Section {
+                Button(action: sendMessage) {
+                    HStack {
+                        Spacer()
+                        Text("Envoyer")
+                            .fontWeight(.semibold)
+                        Spacer()
+                    }
+                }
+                .disabled(subject.isEmpty || message.isEmpty)
+            }
+        }
+        .navigationTitle("Contacter le support")
+        .alert("Message envoyé", isPresented: $showSuccess) {
+            Button("OK") {}
+        } message: {
+            Text("Notre équipe vous répondra dans les plus brefs délais.")
+        }
+    }
+
+    func sendMessage() {
+        // In production, send to backend
+        showSuccess = true
+        subject = ""
+        message = ""
+    }
+}
+
+// MARK: - Report Problem View
+struct ReportProblemView: View {
+    @State private var selectedCategory = "Commande"
+    @State private var description = ""
+    @State private var showSuccess = false
+
+    let categories = ["Commande", "Livraison", "Paiement", "Application", "Autre"]
+
+    var body: some View {
+        Form {
+            Section("Catégorie") {
+                Picker("Type de problème", selection: $selectedCategory) {
+                    ForEach(categories, id: \.self) { category in
+                        Text(category).tag(category)
+                    }
+                }
+            }
+
+            Section("Description") {
+                TextEditor(text: $description)
+                    .frame(minHeight: 150)
+            }
+
+            Section {
+                Button(action: submitReport) {
+                    HStack {
+                        Spacer()
+                        Text("Signaler")
+                            .fontWeight(.semibold)
+                        Spacer()
+                    }
+                }
+                .disabled(description.isEmpty)
+            }
+        }
+        .navigationTitle("Signaler un problème")
+        .alert("Signalement envoyé", isPresented: $showSuccess) {
+            Button("OK") {}
+        } message: {
+            Text("Merci pour votre retour. Nous examinerons votre signalement.")
+        }
+    }
+
+    func submitReport() {
+        showSuccess = true
+        description = ""
+    }
+}
+
+// MARK: - Terms of Service View
+struct TermsOfServiceView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Conditions Générales d'Utilisation")
+                    .font(.title2)
+                    .fontWeight(.bold)
+
+                Text("Dernière mise à jour : Janvier 2026")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Group {
+                    SectionTitle("1. Acceptation des conditions")
+                    Text("En utilisant l'application GreenDrop, vous acceptez d'être lié par les présentes conditions d'utilisation. Si vous n'acceptez pas ces conditions, veuillez ne pas utiliser notre service.")
+
+                    SectionTitle("2. Description du service")
+                    Text("GreenDrop est une plateforme de livraison qui met en relation des utilisateurs, des commerçants et des livreurs. Nous facilitons la commande et la livraison de produits alimentaires et autres articles.")
+
+                    SectionTitle("3. Inscription et compte")
+                    Text("Pour utiliser nos services, vous devez créer un compte avec des informations exactes et à jour. Vous êtes responsable de la confidentialité de votre mot de passe et de toutes les activités sur votre compte.")
+
+                    SectionTitle("4. Commandes et paiements")
+                    Text("Les prix affichés incluent toutes les taxes applicables. Les frais de livraison sont indiqués avant la validation de la commande. Le paiement est effectué au moment de la commande.")
+
+                    SectionTitle("5. Livraison")
+                    Text("Les délais de livraison sont donnés à titre indicatif. GreenDrop ne peut être tenu responsable des retards indépendants de notre volonté.")
+
+                    SectionTitle("6. Annulation et remboursement")
+                    Text("Vous pouvez annuler une commande tant qu'elle n'a pas été préparée. Les remboursements sont traités sous 5-10 jours ouvrés.")
+
+                    SectionTitle("7. Protection des données")
+                    Text("Vos données personnelles sont traitées conformément à notre Politique de Confidentialité et au RGPD.")
+
+                    SectionTitle("8. Modification des conditions")
+                    Text("Nous nous réservons le droit de modifier ces conditions à tout moment. Les modifications prendront effet dès leur publication.")
+                }
+            }
+            .padding()
+        }
+        .navigationTitle("CGU")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct SectionTitle: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.headline)
+            .padding(.top, 8)
+    }
+}
+
+// MARK: - Privacy Policy View
+struct PrivacyPolicyView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Politique de Confidentialité")
+                    .font(.title2)
+                    .fontWeight(.bold)
+
+                Text("Dernière mise à jour : Janvier 2026")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Group {
+                    SectionTitle("1. Collecte des données")
+                    Text("Nous collectons les données que vous nous fournissez directement : nom, email, adresse, numéro de téléphone, ainsi que les données de localisation lors de l'utilisation de l'application.")
+
+                    SectionTitle("2. Utilisation des données")
+                    Text("Vos données sont utilisées pour :\n• Traiter vos commandes\n• Vous livrer vos produits\n• Améliorer nos services\n• Vous contacter si nécessaire")
+
+                    SectionTitle("3. Partage des données")
+                    Text("Vos données peuvent être partagées avec :\n• Les commerçants pour préparer votre commande\n• Les livreurs pour effectuer la livraison\n• Nos prestataires de paiement")
+
+                    SectionTitle("4. Sécurité")
+                    Text("Nous mettons en œuvre des mesures de sécurité appropriées pour protéger vos données contre tout accès non autorisé.")
+
+                    SectionTitle("5. Vos droits")
+                    Text("Conformément au RGPD, vous disposez des droits suivants :\n• Droit d'accès\n• Droit de rectification\n• Droit à l'effacement\n• Droit à la portabilité\n• Droit d'opposition")
+
+                    SectionTitle("6. Cookies")
+                    Text("Notre application utilise des technologies similaires aux cookies pour améliorer votre expérience et analyser l'utilisation du service.")
+
+                    SectionTitle("7. Contact")
+                    Text("Pour toute question concernant vos données personnelles, contactez-nous à : privacy@greendrop.com")
+                }
+            }
+            .padding()
+        }
+        .navigationTitle("Confidentialité")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Licenses View
+struct LicensesView: View {
+    let licenses = [
+        ("Firebase", "Apache 2.0"),
+        ("SwiftUI", "Apple Inc."),
+        ("MapKit", "Apple Inc."),
+        ("Combine", "Apple Inc.")
+    ]
+
+    var body: some View {
+        List {
+            ForEach(licenses, id: \.0) { name, license in
+                HStack {
+                    Text(name)
+                    Spacer()
+                    Text(license)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Licences")
+    }
+}
+
+// MARK: - Payment Methods View (Placeholder)
+struct PaymentMethodsView: View {
+    var body: some View {
+        ContentUnavailableView(
+            "Paiement",
+            systemImage: "creditcard.fill",
+            description: Text("La gestion des moyens de paiement sera disponible prochainement avec l'intégration Stripe.")
+        )
+        .navigationTitle("Moyens de paiement")
+    }
+}
+
+// MARK: - Order History View (Placeholder - reuses ClientOrdersView)
+struct OrderHistoryView: View {
+    var body: some View {
+        ClientOrdersView()
+            .navigationTitle("Historique")
+    }
+}

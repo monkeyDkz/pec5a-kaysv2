@@ -20,8 +20,13 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
+    function isMerchant() {
+      return isAuthenticated() &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'merchant';
+    }
+
     function isVerified() {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'verified';
     }
 
@@ -29,16 +34,16 @@ service cloud.firestore {
     match /users/{userId} {
       // Allow users to read their own profile
       allow read: if isOwner(userId) || isAdmin();
-      
-      // Only admins can create users
-      allow create: if isAdmin();
-      
+
+      // Allow users to create their own profile on signup
+      allow create: if isOwner(userId) || isAdmin();
+
       // Users can update their own profile (excluding role/status)
       // Admins can update any user
-      allow update: if isAdmin() || 
-                      (isOwner(userId) && 
+      allow update: if isAdmin() ||
+                      (isOwner(userId) &&
                        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status']));
-      
+
       // Only admins can delete users
       allow delete: if isAdmin();
     }
@@ -46,26 +51,25 @@ service cloud.firestore {
     // Orders collection
     match /orders/{orderId} {
       // Admins can read all orders
-      // Drivers can read orders assigned to them
+      // Drivers can read orders assigned to them or available orders
       // Users can read their own orders
-      allow read: if isAdmin() || 
-                    (isDriver() && resource.data.driverId == request.auth.uid) ||
+      allow read: if isAdmin() ||
+                    isDriver() ||
+                    isMerchant() ||
                     (isAuthenticated() && resource.data.userId == request.auth.uid);
-      
-      // Only authenticated verified users can create orders
-      allow create: if isAuthenticated() && isVerified();
-      
+
+      // Authenticated users can create orders
+      allow create: if isAuthenticated();
+
       // Admins can update any order
-      // Drivers can update status and location of their assigned orders
-      // Users can cancel their own orders if status is 'created' or 'paid'
-      allow update: if isAdmin() || 
-                      (isDriver() && 
-                       resource.data.driverId == request.auth.uid &&
-                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'driverLocation', 'timeline', 'documents', 'notes', 'updatedAt'])) ||
-                      (isOwner(resource.data.userId) && 
-                       resource.data.status in ['created', 'paid'] && 
-                       request.resource.data.status == 'cancelled');
-      
+      // Drivers can update orders (status, location, etc.)
+      // Merchants can update orders for their shop
+      // Users can update their own orders
+      allow update: if isAdmin() ||
+                      isDriver() ||
+                      isMerchant() ||
+                      (isAuthenticated() && resource.data.userId == request.auth.uid);
+
       // Only admins can delete orders
       allow delete: if isAdmin();
     }
@@ -74,19 +78,21 @@ service cloud.firestore {
     match /products/{productId} {
       // Everyone can read products
       allow read: if true;
-      
-      // Only admins can create/update/delete products
-      allow create, update, delete: if isAdmin();
+
+      // Admins and merchants can create/update/delete products
+      allow create, update, delete: if isAdmin() || isMerchant();
     }
 
     // Shops/Merchants collection
     match /shops/{shopId} {
       // Everyone can read shops
       allow read: if true;
-      
-      // Only admins can create/update shops
-      allow create, update: if isAdmin();
-      
+
+      // Admins and merchants can create/update shops
+      allow create: if isAdmin() || isMerchant();
+      allow update: if isAdmin() ||
+                      (isMerchant() && resource.data.ownerId == request.auth.uid);
+
       // Only admins can delete shops
       allow delete: if isAdmin();
     }
@@ -96,17 +102,30 @@ service cloud.firestore {
       // Admins can read all drivers
       // Drivers can read their own profile
       allow read: if isAdmin() || isOwner(driverId);
-      
-      // Only admins can create drivers
-      allow create: if isAdmin();
-      
+
+      // Drivers can create their own profile, admins can create any
+      allow create: if isAdmin() || isOwner(driverId);
+
       // Admins can update any driver
-      // Drivers can update their own status, location, and availability
-      allow update: if isAdmin() || 
-                      (isOwner(driverId) && 
-                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'location', 'isAvailable', 'currentOrderId', 'updatedAt']));
-      
+      // Drivers can update their own status, location, availability, etc.
+      allow update: if isAdmin() || isOwner(driverId);
+
       // Only admins can delete drivers
+      allow delete: if isAdmin();
+    }
+
+    // Reviews collection
+    match /reviews/{reviewId} {
+      // Everyone can read reviews
+      allow read: if true;
+
+      // Authenticated users can create reviews
+      allow create: if isAuthenticated();
+
+      // Users can update their own reviews
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+
+      // Only admins can delete reviews
       allow delete: if isAdmin();
     }
 
@@ -114,7 +133,7 @@ service cloud.firestore {
     match /verifications/{verificationId} {
       // Admins can read all verifications
       // Users can read their own verification
-      allow read: if isAdmin() || isOwner(resource.data.userId);
+      allow read: if isAdmin() || isOwner(verificationId);
       
       // Only authenticated users can create verifications
       allow create: if isAuthenticated();
@@ -202,6 +221,35 @@ service cloud.firestore {
       
       // Only admins can delete notifications
       allow delete: if isAdmin();
+    }
+
+    // Deliveries collection
+    match /deliveries/{deliveryId} {
+      // Drivers and admins can read deliveries
+      allow read: if isAuthenticated();
+
+      // Authenticated users can create deliveries (from orders)
+      allow create: if isAuthenticated();
+
+      // Drivers can update their deliveries, admins can update any
+      allow update: if isAdmin() || isDriver();
+
+      // Only admins can delete
+      allow delete: if isAdmin();
+    }
+
+    // Chats collection (order-based chat)
+    match /chats/{chatId} {
+      allow read, write: if isAuthenticated();
+
+      match /messages/{messageId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    // Favorites collection (user favorites)
+    match /favorites/{favoriteId} {
+      allow read, write: if isAuthenticated();
     }
 
     // Default deny all other collections

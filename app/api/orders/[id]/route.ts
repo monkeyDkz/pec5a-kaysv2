@@ -7,11 +7,11 @@ import { adminDb } from "@/lib/firebase-admin";
  */
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   return withAuth(async (req: NextRequest, auth) => {
     try {
-      const orderId = context.params.id;
+      const { id: orderId } = await context.params;
     const orderDoc = await adminDb.collection("orders").doc(orderId).get();
 
     if (!orderDoc.exists) {
@@ -52,11 +52,11 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   return withAuth(async (req: NextRequest, auth) => {
     try {
-      const orderId = context.params.id;
+      const { id: orderId } = await context.params;
     const body = await request.json();
     const { status, driverId } = body;
 
