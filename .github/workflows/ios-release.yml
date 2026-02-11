@@ -5,7 +5,6 @@ on:
     tags:
       - 'v*'
 
-  # Lancement manuel depuis l'onglet Actions de GitHub
   workflow_dispatch:
     inputs:
       version:
@@ -17,39 +16,36 @@ jobs:
   build-ios-simulator:
     name: Build iOS (Simulator)
     runs-on: macos-14
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: ios/GreenDrop
 
     steps:
-      # ── 1. Checkout ──
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ── 2. Sélection de Xcode ──
-      - name: Select Xcode
+      - name: Setup Xcode
         run: |
-          # List available Xcode versions
-          ls /Applications/ | grep Xcode
-
-          # Use latest available Xcode on macos-14
+          # Select Xcode
           if [ -d "/Applications/Xcode_16.1.app" ]; then
             sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
           elif [ -d "/Applications/Xcode_16.0.app" ]; then
             sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
-          elif [ -d "/Applications/Xcode_15.4.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
-          else
-            echo "Using default Xcode"
           fi
-
           xcodebuild -version
-          echo "── Available simulator runtimes ──"
-          xcrun simctl list runtimes
-          echo "── Available iPhone simulators ──"
-          xcrun simctl list devices available | grep iPhone | head -10
 
-      # ── 3. Cache des dépendances SPM ──
+      - name: Install iOS Simulator runtime
+        run: |
+          echo "Downloading iOS Simulator runtime (this may take ~10 min)..."
+          xcodebuild -downloadPlatform iOS
+          echo "── Installed runtimes ──"
+          xcrun simctl list runtimes
+          echo "── Creating simulator ──"
+          xcrun simctl create "GreenDropTest" "iPhone 15" || true
+          echo "── Available devices ──"
+          xcrun simctl list devices available | grep -E "iPhone|iPad" | head -10
+
       - name: Cache Swift packages
         uses: actions/cache@v4
         with:
@@ -58,7 +54,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-
 
-      # ── 4. Résolution des dépendances ──
       - name: Resolve Swift packages
         run: |
           xcodebuild -resolvePackageDependencies \
@@ -66,19 +61,14 @@ jobs:
             -scheme GreenDrop \
             -clonedSourcePackagesDirPath ../../.swiftpm
 
-      # ── 5. Build pour Simulateur iOS ──
       - name: Build for iOS Simulator
         run: |
-          # Find first available iPhone simulator
-          SIM_NAME=$(xcrun simctl list devices available | grep "iPhone" | head -1 | sed 's/^ *//' | cut -d'(' -f1 | sed 's/ *$//')
-          echo "Using simulator: $SIM_NAME"
-
           xcodebuild build \
             -project GreenDrop.xcodeproj \
             -scheme GreenDrop \
             -configuration Release \
             -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,name=$SIM_NAME" \
+            -destination "platform=iOS Simulator,name=iPhone 15" \
             -derivedDataPath $RUNNER_TEMP/DerivedData \
             -clonedSourcePackagesDirPath ../../.swiftpm \
             CODE_SIGNING_ALLOWED=NO \
@@ -86,34 +76,29 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             ONLY_ACTIVE_ARCH=NO
 
-      # ── 6. Tests unitaires ──
       - name: Run unit tests
         run: |
-          SIM_NAME=$(xcrun simctl list devices available | grep "iPhone" | head -1 | sed 's/^ *//' | cut -d'(' -f1 | sed 's/ *$//')
-
           xcodebuild test \
             -project GreenDrop.xcodeproj \
             -scheme GreenDrop \
             -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,name=$SIM_NAME" \
+            -destination "platform=iOS Simulator,name=iPhone 15" \
             -derivedDataPath $RUNNER_TEMP/DerivedData \
             -clonedSourcePackagesDirPath ../../.swiftpm \
             CODE_SIGNING_ALLOWED=NO || true
 
-      # ── 7. Packager le .app en zip ──
       - name: Package simulator build
         run: |
           APP_PATH=$(find $RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator -name "GreenDrop.app" -type d | head -1)
 
           if [ -z "$APP_PATH" ]; then
-            echo "::error::GreenDrop.app not found in build products"
+            echo "::error::GreenDrop.app not found"
             find $RUNNER_TEMP/DerivedData/Build/Products/ -name "*.app" -type d || true
             exit 1
           fi
 
           echo "Found app: $APP_PATH"
 
-          # Déterminer la version
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ github.event.inputs.version }}"
           else
@@ -121,13 +106,10 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-          # Zipper le .app
           cd "$(dirname "$APP_PATH")"
           zip -r -y $RUNNER_TEMP/GreenDrop-Simulator-$VERSION.zip GreenDrop.app
-
           ls -lh $RUNNER_TEMP/GreenDrop-Simulator-$VERSION.zip
 
-      # ── 8. Créer la GitHub Release ──
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
