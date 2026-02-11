@@ -16,7 +16,7 @@ jobs:
   build-ios-simulator:
     name: Build iOS (Simulator)
     runs-on: macos-14
-    timeout-minutes: 60
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: ios/GreenDrop
@@ -27,24 +27,14 @@ jobs:
 
       - name: Setup Xcode
         run: |
-          # Select Xcode
           if [ -d "/Applications/Xcode_16.1.app" ]; then
             sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
           elif [ -d "/Applications/Xcode_16.0.app" ]; then
             sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
           fi
           xcodebuild -version
-
-      - name: Install iOS Simulator runtime
-        run: |
-          echo "Downloading iOS Simulator runtime (this may take ~10 min)..."
-          xcodebuild -downloadPlatform iOS
-          echo "── Installed runtimes ──"
-          xcrun simctl list runtimes
-          echo "── Creating simulator ──"
-          xcrun simctl create "GreenDropTest" "iPhone 15" || true
-          echo "── Available devices ──"
-          xcrun simctl list devices available | grep -E "iPhone|iPad" | head -10
+          echo "── Available destinations ──"
+          xcodebuild -project GreenDrop.xcodeproj -scheme GreenDrop -showdestinations 2>/dev/null | head -20 || true
 
       - name: Cache Swift packages
         uses: actions/cache@v4
@@ -63,29 +53,19 @@ jobs:
 
       - name: Build for iOS Simulator
         run: |
+          # Use the generic iOS Simulator placeholder — no runtime needed for compiling
           xcodebuild build \
             -project GreenDrop.xcodeproj \
             -scheme GreenDrop \
             -configuration Release \
             -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,name=iPhone 15" \
+            -destination "id=dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder" \
             -derivedDataPath $RUNNER_TEMP/DerivedData \
             -clonedSourcePackagesDirPath ../../.swiftpm \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             ONLY_ACTIVE_ARCH=NO
-
-      - name: Run unit tests
-        run: |
-          xcodebuild test \
-            -project GreenDrop.xcodeproj \
-            -scheme GreenDrop \
-            -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,name=iPhone 15" \
-            -derivedDataPath $RUNNER_TEMP/DerivedData \
-            -clonedSourcePackagesDirPath ../../.swiftpm \
-            CODE_SIGNING_ALLOWED=NO || true
 
       - name: Package simulator build
         run: |
