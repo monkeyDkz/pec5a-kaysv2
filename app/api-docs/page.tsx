@@ -1,18 +1,18 @@
-"use client";
+"use client"
 
-import { useEffect } from "react";
-import Script from "next/script";
+import { useEffect } from "react"
+import Script from "next/script"
 
 export default function ApiDocsPage() {
   useEffect(() => {
     // Ajouter le CSS Swagger UI
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://unpkg.com/swagger-ui-dist@5.10.5/swagger-ui.css";
-    document.head.appendChild(link);
+    const link = document.createElement("link")
+    link.rel = "stylesheet"
+    link.href = "https://unpkg.com/swagger-ui-dist@5.10.5/swagger-ui.css"
+    document.head.appendChild(link)
 
     // Ajouter le style personnalisé
-    const style = document.createElement("style");
+    const style = document.createElement("style")
     style.textContent = `
       .swagger-ui .topbar {
         background-color: #18181b;
@@ -20,15 +20,15 @@ export default function ApiDocsPage() {
       .swagger-ui .topbar .download-url-wrapper {
         display: none;
       }
-    `;
-    document.head.appendChild(style);
+    `
+    document.head.appendChild(style)
 
     return () => {
       // Cleanup
-      document.head.removeChild(link);
-      document.head.removeChild(style);
-    };
-  }, []);
+      document.head.removeChild(link)
+      document.head.removeChild(style)
+    }
+  }, [])
 
   return (
     <div style={{ width: "100vw", height: "100vh", overflow: "auto" }}>
@@ -38,27 +38,27 @@ export default function ApiDocsPage() {
         src="https://unpkg.com/swagger-ui-dist@5.10.5/swagger-ui-bundle.js"
         strategy="afterInteractive"
         onLoad={() => {
-          // @ts-ignore
+          // @ts-expect-error - Swagger UI global
           if (window.SwaggerUIBundle) {
-            // @ts-ignore
+            // @ts-expect-error - Swagger UI global
             window.ui = window.SwaggerUIBundle({
               url: "/api/openapi",
               dom_id: "#swagger-ui",
               deepLinking: true,
               presets: [
-                // @ts-ignore
+                // @ts-expect-error - Swagger UI global
                 window.SwaggerUIBundle.presets.apis,
-                // @ts-ignore
+                // @ts-expect-error - Swagger UI global
                 window.SwaggerUIStandalonePreset,
               ],
               plugins: [
-                // @ts-ignore
+                // @ts-expect-error - Swagger UI global
                 window.SwaggerUIBundle.plugins.DownloadUrl,
               ],
               layout: "StandaloneLayout",
               tryItOutEnabled: true,
               persistAuthorization: true,
-            });
+            })
           }
         }}
       />
@@ -67,5 +67,5 @@ export default function ApiDocsPage() {
         strategy="afterInteractive"
       />
     </div>
-  );
+  )
 }

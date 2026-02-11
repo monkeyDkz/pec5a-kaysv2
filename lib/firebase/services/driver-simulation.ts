@@ -38,7 +38,7 @@ let driversData: DriverSimulation[] = []
 function getRandomMovement(): { latDelta: number; lngDelta: number } {
   const angle = Math.random() * 2 * Math.PI
   const distance = MOVEMENT_DELTA * (0.5 + Math.random() * 0.5) // 50-100% du delta max
-  
+
   return {
     latDelta: Math.cos(angle) * distance,
     lngDelta: Math.sin(angle) * distance,
@@ -62,7 +62,7 @@ function getRandomStatus(currentStatus: string): string {
   if (Math.random() > STATUS_CHANGE_PROBABILITY) {
     return currentStatus // Pas de changement
   }
-  
+
   // Favorise online (50%) et busy (30%)
   const rand = Math.random()
   if (rand < 0.5) return "online"
@@ -77,11 +77,11 @@ function getRandomStatus(currentStatus: string): string {
 async function loadDriversData(): Promise<void> {
   try {
     const driversSnapshot = await getDocs(collection(db, COLLECTIONS.DRIVERS))
-    
+
     driversData = driversSnapshot.docs.map((doc) => {
       const data = doc.data()
       const location = data.location || { lat: 48.8566, lng: 2.3522 } // Centre Paris par défaut
-      
+
       return {
         id: doc.id,
         currentLat: location.lat,
@@ -91,7 +91,7 @@ async function loadDriversData(): Promise<void> {
         status: data.status || "online",
       }
     })
-    
+
     console.log(`✅ Simulation chargée: ${driversData.length} chauffeurs`)
   } catch (error) {
     console.error("❌ Erreur chargement chauffeurs:", error)
@@ -104,7 +104,7 @@ async function loadDriversData(): Promise<void> {
 async function updateDriverPosition(driver: DriverSimulation): Promise<void> {
   try {
     const driverRef = doc(db, COLLECTIONS.DRIVERS, driver.id)
-    
+
     await updateDoc(driverRef, {
       location: {
         lat: driver.currentLat,
@@ -124,25 +124,25 @@ async function updateDriverPosition(driver: DriverSimulation): Promise<void> {
  */
 async function simulationStep(): Promise<void> {
   if (driversData.length === 0) return
-  
+
   const updatePromises = driversData.map(async (driver) => {
     // Déplacement aléatoire
     const movement = getRandomMovement()
-    let newLat = driver.currentLat + movement.latDelta
-    let newLng = driver.currentLng + movement.lngDelta
-    
+    const newLat = driver.currentLat + movement.latDelta
+    const newLng = driver.currentLng + movement.lngDelta
+
     // Contrainte dans Paris
     const constrained = constrainToParis(newLat, newLng)
     driver.currentLat = constrained.lat
     driver.currentLng = constrained.lng
-    
+
     // Changement de statut aléatoire
     driver.status = getRandomStatus(driver.status)
-    
+
     // Mise à jour Firestore
     await updateDriverPosition(driver)
   })
-  
+
   await Promise.all(updatePromises)
   console.log(`🔄 Simulation: ${driversData.length} chauffeurs mis à jour`)
 }
@@ -155,27 +155,27 @@ export async function startSimulation(): Promise<void> {
     console.warn("⚠️ Simulation déjà en cours")
     return
   }
-  
+
   console.log("🚀 Démarrage simulation chauffeurs...")
   await loadDriversData()
-  
+
   if (driversData.length === 0) {
     console.error("❌ Aucun chauffeur à simuler")
     return
   }
-  
+
   isSimulating = true
-  
+
   // Première mise à jour immédiate
   await simulationStep()
-  
+
   // Puis toutes les X secondes
   simulationInterval = setInterval(async () => {
     if (isSimulating) {
       await simulationStep()
     }
   }, UPDATE_INTERVAL)
-  
+
   console.log(`✅ Simulation démarrée (${UPDATE_INTERVAL / 1000}s)`)
 }
 
@@ -187,12 +187,12 @@ export function stopSimulation(): void {
     console.warn("⚠️ Aucune simulation en cours")
     return
   }
-  
+
   if (simulationInterval) {
     clearInterval(simulationInterval)
     simulationInterval = null
   }
-  
+
   isSimulating = false
   console.log("⏹️ Simulation arrêtée")
 }

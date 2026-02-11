@@ -1,22 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
-import { withAuth, handleApiError } from "@/lib/api-middleware";
-import { adminDb } from "@/lib/firebase-admin";
+import { NextRequest, NextResponse } from "next/server"
+import { withAuth, handleApiError } from "@/lib/api-middleware"
+import { adminDb } from "@/lib/firebase-admin"
 
 /**
  * Calculer la distance en km entre deux coordonnées (formule Haversine)
  */
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Rayon de la Terre en km
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const R = 6371 // Rayon de la Terre en km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLon = ((lon2 - lon1) * Math.PI) / 180
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
 }
 
 /**
@@ -24,61 +21,57 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
  */
 export const GET = withAuth(async (request: NextRequest) => {
   try {
-    const { searchParams } = new URL(request.url);
-    const category = searchParams.get("category");
-    const search = searchParams.get("search");
-    const lat = searchParams.get("lat");
-    const lng = searchParams.get("lng");
-    const radius = parseFloat(searchParams.get("radius") || "10"); // 10km par défaut
+    const { searchParams } = new URL(request.url)
+    const category = searchParams.get("category")
+    const search = searchParams.get("search")
+    const lat = searchParams.get("lat")
+    const lng = searchParams.get("lng")
+    const radius = parseFloat(searchParams.get("radius") || "10") // 10km par défaut
 
-    let query = adminDb.collection("shops");
+    let query: FirebaseFirestore.Query = adminDb.collection("shops")
 
     // Filtrer par catégorie
     if (category) {
-      query = query.where("category", "==", category) as any;
+      query = query.where("category", "==", category)
     }
 
-    const snapshot = await query.get();
+    const snapshot = await query.get()
 
-    let shops = snapshot.docs.map((doc) => ({
+    let shops: Array<Record<string, unknown>> = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
-    }));
+    }))
 
     // Filtrer par recherche texte
     if (search) {
-      const searchLower = search.toLowerCase();
+      const searchLower = search.toLowerCase()
       shops = shops.filter(
-        (shop: any) =>
-          shop.name?.toLowerCase().includes(searchLower) ||
-          shop.description?.toLowerCase().includes(searchLower)
-      );
+        (shop) =>
+          (shop.name as string)?.toLowerCase().includes(searchLower) ||
+          (shop.description as string)?.toLowerCase().includes(searchLower)
+      )
     }
 
     // Filtrer par distance géographique
     if (lat && lng) {
-      const userLat = parseFloat(lat);
-      const userLng = parseFloat(lng);
+      const userLat = parseFloat(lat)
+      const userLng = parseFloat(lng)
 
       shops = shops
-        .map((shop: any) => {
-          const distance = calculateDistance(
-            userLat,
-            userLng,
-            shop.location?.latitude || 0,
-            shop.location?.longitude || 0
-          );
-          return { ...shop, distance };
+        .map((shop) => {
+          const loc = shop.location as { latitude?: number; longitude?: number } | undefined
+          const distance = calculateDistance(userLat, userLng, loc?.latitude || 0, loc?.longitude || 0)
+          return { ...shop, distance }
         })
-        .filter((shop: any) => shop.distance <= radius)
-        .sort((a: any, b: any) => a.distance - b.distance);
+        .filter((shop) => (shop.distance as number) <= radius)
+        .sort((a, b) => (a.distance as number) - (b.distance as number))
     }
 
     return NextResponse.json({
       success: true,
       shops,
-    });
+    })
   } catch (error) {
-    return handleApiError(error);
+    return handleApiError(error)
   }
-});
+})

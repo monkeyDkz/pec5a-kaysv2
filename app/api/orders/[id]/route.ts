@@ -79,7 +79,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       }
 
       // Mettre à jour la commande
-      const updates: any = {
+      const updates: Record<string, unknown> = {
         status,
         updatedAt: new Date(),
       }
