@@ -26,12 +26,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ── 2. Sélection de Xcode ──
-      - name: Select Xcode
+      # ── 2. Sélection de Xcode + installation du runtime iOS Simulator ──
+      - name: Select Xcode and install iOS runtime
         run: |
           sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
           echo "── Xcode version ──"
           xcodebuild -version
+
+          echo "── Installing iOS Simulator runtime ──"
+          xcodebuild -downloadPlatform iOS
+
           echo "── Available simulators ──"
           xcrun simctl list runtimes
 
@@ -55,12 +59,26 @@ jobs:
       # ── 5. Build pour Simulateur iOS ──
       - name: Build for iOS Simulator
         run: |
+          # Find an available iPhone simulator
+          DEST=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for runtime, devices in data['devices'].items():
+              if 'iOS' in runtime:
+                  for d in devices:
+                      if 'iPhone' in d['name'] and d['isAvailable']:
+                          print(f\"platform=iOS Simulator,id={d['udid']}\")
+                          sys.exit(0)
+          print('generic/platform=iOS Simulator')
+          ")
+          echo "Using destination: $DEST"
+
           xcodebuild build \
             -project GreenDrop.xcodeproj \
             -scheme GreenDrop \
             -configuration Release \
             -sdk iphonesimulator \
-            -destination "generic/platform=iOS Simulator" \
+            -destination "$DEST" \
             -derivedDataPath $RUNNER_TEMP/DerivedData \
             -clonedSourcePackagesDirPath ../../.swiftpm \
             CODE_SIGNING_ALLOWED=NO \
@@ -71,11 +89,24 @@ jobs:
       # ── 6. Tests unitaires ──
       - name: Run unit tests
         run: |
+          # Find an available iPhone simulator for tests
+          DEST=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for runtime, devices in data['devices'].items():
+              if 'iOS' in runtime:
+                  for d in devices:
+                      if 'iPhone' in d['name'] and d['isAvailable']:
+                          print(f\"platform=iOS Simulator,id={d['udid']}\")
+                          sys.exit(0)
+          " 2>/dev/null || echo "platform=iOS Simulator,name=iPhone 16,OS=latest")
+          echo "Test destination: $DEST"
+
           xcodebuild test \
             -project GreenDrop.xcodeproj \
             -scheme GreenDrop \
             -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,name=iPhone 16,OS=latest" \
+            -destination "$DEST" \
             -derivedDataPath $RUNNER_TEMP/DerivedData \
             -clonedSourcePackagesDirPath ../../.swiftpm \
             CODE_SIGNING_ALLOWED=NO || true
