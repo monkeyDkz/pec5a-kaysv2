@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AdminLayout } from "@/components/admin/admin-layout"
-import { ZoneMapEditor } from "@/components/admin/zone-map-editor"
+import dynamic from "next/dynamic"
+const ZoneMapEditor = dynamic(() => import("@/components/admin/zone-map-editor").then((m) => m.ZoneMapEditor), {
+  ssr: false,
+})
 import { EntityDrawer } from "@/components/admin/entity-drawer"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -56,10 +59,7 @@ export default function LegalZonesPage() {
       console.error("Error saving zones", err)
       toast({
         title: t("language") === "fr" ? "Échec" : "Failed",
-        description:
-          t("language") === "fr"
-            ? "Impossible d'enregistrer les zones"
-            : "Unable to save zones",
+        description: t("language") === "fr" ? "Impossible d'enregistrer les zones" : "Unable to save zones",
         variant: "destructive",
       })
     } finally {
@@ -88,10 +88,7 @@ export default function LegalZonesPage() {
       console.error("Error toggling zone", err)
       toast({
         title: t("language") === "fr" ? "Échec" : "Failed",
-        description:
-          t("language") === "fr"
-            ? "Impossible de mettre à jour le statut"
-            : "Unable to update zone status",
+        description: t("language") === "fr" ? "Impossible de mettre à jour le statut" : "Unable to update zone status",
         variant: "destructive",
       })
     }
@@ -113,10 +110,7 @@ export default function LegalZonesPage() {
     if (!zones.length) {
       toast({
         title: t("language") === "fr" ? "Aucune zone" : "No zones",
-        description:
-          t("language") === "fr"
-            ? "Ajoutez une zone avant d'exporter"
-            : "Create a zone before exporting",
+        description: t("language") === "fr" ? "Ajoutez une zone avant d'exporter" : "Create a zone before exporting",
         variant: "destructive",
       })
       return
@@ -125,10 +119,7 @@ export default function LegalZonesPage() {
     downloadGeoJSON(geojson, `legal-zones-${new Date().toISOString().split("T")[0]}`)
     toast({
       title: t("language") === "fr" ? "Export GeoJSON" : "GeoJSON export",
-      description:
-        t("language") === "fr"
-          ? `${zones.length} zones exportées`
-          : `Exported ${zones.length} zones`,
+      description: t("language") === "fr" ? `${zones.length} zones exportées` : `Exported ${zones.length} zones`,
     })
   }
 
@@ -146,9 +137,7 @@ export default function LegalZonesPage() {
         toast({
           title: t("language") === "fr" ? "Import invalide" : "Invalid import",
           description:
-            t("language") === "fr"
-              ? "Aucune zone exploitable dans ce fichier"
-              : "No valid zones found in the file",
+            t("language") === "fr" ? "Aucune zone exploitable dans ce fichier" : "No valid zones found in the file",
           variant: "destructive",
         })
         return
@@ -158,18 +147,14 @@ export default function LegalZonesPage() {
       toast({
         title: t("language") === "fr" ? "Import GeoJSON" : "GeoJSON import",
         description:
-          t("language") === "fr"
-            ? `${importedZones.length} zones importées`
-            : `${importedZones.length} zones imported`,
+          t("language") === "fr" ? `${importedZones.length} zones importées` : `${importedZones.length} zones imported`,
       })
     } catch (err) {
       console.error("Error importing GeoJSON", err)
       toast({
         title: t("language") === "fr" ? "Import échoué" : "Import failed",
         description:
-          t("language") === "fr"
-            ? "Vérifiez le format du fichier GeoJSON"
-            : "Please verify the GeoJSON file format",
+          t("language") === "fr" ? "Vérifiez le format du fichier GeoJSON" : "Please verify the GeoJSON file format",
         variant: "destructive",
       })
     } finally {
@@ -249,9 +234,7 @@ export default function LegalZonesPage() {
 
         {loading && (
           <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
-            {t("language") === "fr"
-              ? "Chargement des zones en cours..."
-              : "Loading zones from the database..."}
+            {t("language") === "fr" ? "Chargement des zones en cours..." : "Loading zones from the database..."}
           </div>
         )}
 
@@ -318,9 +301,7 @@ export default function LegalZonesPage() {
               <Card>
                 <CardContent className="flex flex-col items-center justify-center gap-2 py-12 text-center text-sm text-muted-foreground">
                   <AlertTriangle className="h-6 w-6" />
-                  {t("language") === "fr"
-                    ? "Aucune zone configurée pour le moment"
-                    : "No zones configured yet"}
+                  {t("language") === "fr" ? "Aucune zone configurée pour le moment" : "No zones configured yet"}
                 </CardContent>
               </Card>
             ) : (
@@ -333,26 +314,37 @@ export default function LegalZonesPage() {
                           <div className="h-3 w-3 rounded-full" style={{ backgroundColor: zone.color }} />
                           <CardTitle className="text-lg">{zone.name}</CardTitle>
                         </div>
-                        <Badge variant={zone.type === "delivery" ? "default" : "destructive"}>{typeLabel(zone.type)}</Badge>
+                        <Badge variant={zone.type === "delivery" ? "default" : "destructive"}>
+                          {typeLabel(zone.type)}
+                        </Badge>
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">
-                          {zone.coordinates.length}{" "}
-                          {t("language") === "fr" ? "points" : "points"}
+                          {zone.coordinates.length} {t("language") === "fr" ? "points" : "points"}
                         </span>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">
-                            {zone.active ? (t("language") === "fr" ? "Active" : "Active") : t("language") === "fr" ? "Bloquée" : "Blocked"}
+                            {zone.active
+                              ? t("language") === "fr"
+                                ? "Active"
+                                : "Active"
+                              : t("language") === "fr"
+                                ? "Bloquée"
+                                : "Blocked"}
                           </span>
-                          <Switch checked={zone.active} onCheckedChange={(checked) => handleToggleZoneActive(zone, checked)} />
+                          <Switch
+                            checked={zone.active}
+                            onCheckedChange={(checked) => handleToggleZoneActive(zone, checked)}
+                          />
                         </div>
                       </div>
                       <div className="rounded-md border border-border bg-muted/30 p-3 max-h-32 overflow-auto text-xs">
                         {zone.coordinates.map((coord, index) => (
                           <div key={`${zone.id}-${index}`}>
-                            {t("language") === "fr" ? "Point" : "Point"} {index + 1}: [{coord.x.toFixed(0)}, {coord.y.toFixed(0)}]
+                            {t("language") === "fr" ? "Point" : "Point"} {index + 1}: [{coord.x.toFixed(0)},{" "}
+                            {coord.y.toFixed(0)}]
                           </div>
                         ))}
                       </div>
@@ -392,10 +384,22 @@ export default function LegalZonesPage() {
             <div className="rounded-lg border border-border/60 p-4 text-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-muted-foreground text-xs uppercase">{t("language") === "fr" ? "Statut" : "Status"}</p>
-                  <p className="text-base font-semibold">{selectedZone.active ? (t("language") === "fr" ? "Active" : "Active") : t("language") === "fr" ? "Bloquée" : "Blocked"}</p>
+                  <p className="text-muted-foreground text-xs uppercase">
+                    {t("language") === "fr" ? "Statut" : "Status"}
+                  </p>
+                  <p className="text-base font-semibold">
+                    {selectedZone.active
+                      ? t("language") === "fr"
+                        ? "Active"
+                        : "Active"
+                      : t("language") === "fr"
+                        ? "Bloquée"
+                        : "Blocked"}
+                  </p>
                 </div>
-                <Badge variant={selectedZone.type === "delivery" ? "default" : "destructive"}>{typeLabel(selectedZone.type)}</Badge>
+                <Badge variant={selectedZone.type === "delivery" ? "default" : "destructive"}>
+                  {typeLabel(selectedZone.type)}
+                </Badge>
               </div>
               <Separator className="my-4" />
               <div className="grid gap-3 text-xs">

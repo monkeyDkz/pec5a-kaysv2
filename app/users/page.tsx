@@ -187,10 +187,7 @@ export default function UsersPage() {
       console.error("Error creating user", error)
       toast({
         title: t("language") === "fr" ? "Échec" : "Failed",
-        description:
-          t("language") === "fr"
-            ? "Impossible de créer l'utilisateur"
-            : "Unable to create the user",
+        description: t("language") === "fr" ? "Impossible de créer l'utilisateur" : "Unable to create the user",
         variant: "destructive",
       })
     } finally {
@@ -204,18 +201,13 @@ export default function UsersPage() {
       toast({
         title: t("language") === "fr" ? "Compte suspendu" : "Account suspended",
         description:
-          t("language") === "fr"
-            ? "Le statut de l'utilisateur a été mis à jour"
-            : "User status updated successfully",
+          t("language") === "fr" ? "Le statut de l'utilisateur a été mis à jour" : "User status updated successfully",
       })
     } catch (error) {
       console.error("Error suspending user", error)
       toast({
         title: t("language") === "fr" ? "Échec" : "Failed",
-        description:
-          t("language") === "fr"
-            ? "Impossible de mettre à jour le statut"
-            : "Unable to update user status",
+        description: t("language") === "fr" ? "Impossible de mettre à jour le statut" : "Unable to update user status",
         variant: "destructive",
       })
     }
@@ -237,10 +229,7 @@ export default function UsersPage() {
       console.error("Error updating user status", error)
       toast({
         title: t("language") === "fr" ? "Échec" : "Failed",
-        description:
-          t("language") === "fr"
-            ? "Impossible de mettre à jour le statut"
-            : "Unable to update user status",
+        description: t("language") === "fr" ? "Impossible de mettre à jour le statut" : "Unable to update user status",
         variant: "destructive",
       })
     }
@@ -261,10 +250,7 @@ export default function UsersPage() {
     if (!statusChanged && Object.keys(pendingUpdates).length === 0) {
       toast({
         title: t("language") === "fr" ? "Aucune modification" : "No changes detected",
-        description:
-          t("language") === "fr"
-            ? "Aucune donnée n'a été modifiée"
-            : "Make a change before saving",
+        description: t("language") === "fr" ? "Aucune donnée n'a été modifiée" : "Make a change before saving",
       })
       return
     }
@@ -279,19 +265,13 @@ export default function UsersPage() {
       }
       toast({
         title: t("language") === "fr" ? "Utilisateur mis à jour" : "User updated",
-        description:
-          t("language") === "fr"
-            ? "Les informations ont été enregistrées"
-            : "Changes saved successfully",
+        description: t("language") === "fr" ? "Les informations ont été enregistrées" : "Changes saved successfully",
       })
     } catch (error) {
       console.error("Error updating user", error)
       toast({
         title: t("language") === "fr" ? "Échec" : "Failed",
-        description:
-          t("language") === "fr"
-            ? "Impossible d'enregistrer les modifications"
-            : "Unable to save changes",
+        description: t("language") === "fr" ? "Impossible d'enregistrer les modifications" : "Unable to save changes",
         variant: "destructive",
       })
     } finally {
@@ -306,9 +286,7 @@ export default function UsersPage() {
       toast({
         title: t("language") === "fr" ? "Utilisateur supprimé" : "User deleted",
         description:
-          t("language") === "fr"
-            ? "Le compte a été supprimé définitivement"
-            : "The account has been removed",
+          t("language") === "fr" ? "Le compte a été supprimé définitivement" : "The account has been removed",
         variant: "destructive",
       })
       setSelectedUserId(null)
@@ -316,10 +294,7 @@ export default function UsersPage() {
       console.error("Error deleting user", error)
       toast({
         title: t("language") === "fr" ? "Échec" : "Failed",
-        description:
-          t("language") === "fr"
-            ? "Impossible de supprimer cet utilisateur"
-            : "Unable to delete this user",
+        description: t("language") === "fr" ? "Impossible de supprimer cet utilisateur" : "Unable to delete this user",
         variant: "destructive",
       })
     } finally {
@@ -333,8 +308,9 @@ export default function UsersPage() {
     rejected: "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20",
   }
 
-  const roleColors = {
+  const roleColors: Record<string, string> = {
     admin: "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20",
+    supervisor: "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20",
     driver: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20",
     merchant: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
     user: "bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/20",
@@ -459,9 +435,7 @@ export default function UsersPage() {
 
         {loading && (
           <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
-            {t("language") === "fr"
-              ? "Chargement des utilisateurs en cours..."
-              : "Loading users from the database..."}
+            {t("language") === "fr" ? "Chargement des utilisateurs en cours..." : "Loading users from the database..."}
           </div>
         )}
 
@@ -494,6 +468,7 @@ export default function UsersPage() {
                   <SelectItem value="user">{t("language") === "fr" ? "Utilisateur" : "User"}</SelectItem>
                   <SelectItem value="merchant">{t("language") === "fr" ? "Marchand" : "Merchant"}</SelectItem>
                   <SelectItem value="driver">Chauffeur</SelectItem>
+                  <SelectItem value="supervisor">Superviseur</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
@@ -578,7 +553,7 @@ export default function UsersPage() {
               <Label htmlFor="role">Role</Label>
               <Select
                 value={newUserData.role}
-                onValueChange={(value) => setNewUserData({ ...newUserData, role: value as "admin" | "merchant" | "driver" | "user" })}
+                onValueChange={(value) => setNewUserData({ ...newUserData, role: value as User["role"] })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -587,6 +562,7 @@ export default function UsersPage() {
                   <SelectItem value="user">{t("language") === "fr" ? "Utilisateur" : "User"}</SelectItem>
                   <SelectItem value="merchant">{t("language") === "fr" ? "Marchand" : "Merchant"}</SelectItem>
                   <SelectItem value="driver">Chauffeur</SelectItem>
+                  <SelectItem value="supervisor">Superviseur</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
@@ -602,8 +578,10 @@ export default function UsersPage() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                   {t("language") === "fr" ? "Création..." : "Creating..."}
                 </span>
+              ) : t("language") === "fr" ? (
+                "Créer l'utilisateur"
               ) : (
-                t("language") === "fr" ? "Créer l'utilisateur" : "Create User"
+                "Create User"
               )}
             </Button>
           </div>

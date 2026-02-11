@@ -72,7 +72,7 @@ final class AppState: ObservableObject {
         }
 
         switch currentUserRole {
-        case .user, .admin:
+        case .user, .admin, .supervisor:
             // Client: listen to their orders
             dataService.startOrdersListener(forUser: profile.id)
 
@@ -118,6 +118,7 @@ enum UserRole: String {
     case user = "user"
     case driver = "driver"
     case merchant = "merchant"
+    case supervisor = "supervisor"
     case admin = "admin"
 
     var displayName: String {
@@ -125,6 +126,7 @@ enum UserRole: String {
         case .user: return "Client"
         case .driver: return "Chauffeur"
         case .merchant: return "Marchand"
+        case .supervisor: return "Superviseur"
         case .admin: return "Administrateur"
         }
     }
@@ -188,7 +190,7 @@ struct MainView: View {
             DriverTabView()
         case .merchant:
             MerchantTabView()
-        case .admin:
+        case .supervisor, .admin:
             ClientTabView()
         }
     }

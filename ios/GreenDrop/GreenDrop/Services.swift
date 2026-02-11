@@ -7,30 +7,50 @@ import FirebaseFirestore
 import GoogleSignIn
 
 // MARK: - Auth Service
+
+/// Manages user authentication via Firebase Auth and Google Sign-In.
+///
+/// `AuthService` handles email/password and Google OAuth sign-in flows, manages
+/// user profile loading from Firestore, and provides role-based account creation
+/// for customers, merchants, and drivers. Includes a demo mode for development.
+///
+/// - Note: This is a singleton accessed via `AuthService.shared`. All methods
+///   run on the main actor.
 @MainActor
 final class AuthService: ObservableObject {
+    /// Shared singleton instance.
     static let shared = AuthService()
 
+    /// The currently authenticated Firebase user, or `nil` if signed out.
     @Published private(set) var currentUser: FirebaseAuth.User?
+    /// The loaded user profile from Firestore, or `nil` if not authenticated.
     @Published private(set) var userProfile: UserProfile?
+    /// Whether an authentication operation is in progress.
     @Published private(set) var isLoading = true
+    /// User-facing error message from the last failed auth operation.
     @Published var errorMessage: String?
+    /// Whether the user needs to select a role (shown during new Google sign-up).
     @Published var needsRoleSelection = false
 
-    // Pending Google user data (stored while waiting for role selection)
+    /// Pending Google user ID stored while waiting for role selection.
     private var pendingGoogleUserId: String?
+    /// Pending Google email stored while waiting for role selection.
     private var pendingGoogleEmail: String?
+    /// Pending Google display name stored while waiting for role selection.
     private var pendingGoogleName: String?
 
-    // Flag to prevent auth state listener from interfering during Google sign-up
+    /// Flag to prevent the auth state listener from interfering during Google sign-in.
     private var isHandlingGoogleSignIn = false
 
-    // Demo mode flag - set to true to bypass Firebase Auth
+    /// When `true`, bypasses Firebase Auth and uses mock data. For development only.
     private let demoMode = false
 
+    /// Handle for the Firebase auth state change listener.
     private var authStateHandler: AuthStateDidChangeListenerHandle?
+    /// Firestore database reference.
     private let db = Firestore.firestore()
 
+    /// Whether the user is fully authenticated with a loaded profile.
     var isAuthenticated: Bool {
         userProfile != nil
     }
@@ -91,6 +111,11 @@ final class AuthService: ObservableObject {
         }
     }
 
+    /// Fetches the user profile from Firestore, falling back to a generated profile if unavailable.
+    ///
+    /// - Parameters:
+    ///   - userId: The Firebase UID of the user.
+    ///   - email: The user's email address (used for fallback profile generation).
     private func fetchUserProfile(userId: String, email: String) async {
 
         // Always create a fallback profile first
@@ -132,6 +157,10 @@ final class AuthService: ObservableObject {
         }
     }
 
+    /// Determines a user's role based on keywords in their email address.
+    ///
+    /// - Parameter email: The user's email address.
+    /// - Returns: A role string ("driver", "merchant", "admin", or "user").
     private func determineRole(from email: String) -> String {
         if email.contains("driver") { return "driver" }
         if email.contains("merchant") { return "merchant" }
@@ -139,6 +168,14 @@ final class AuthService: ObservableObject {
         return "user"
     }
 
+    /// Signs in a user with email and password via Firebase Auth.
+    ///
+    /// On success, fetches the user's profile from Firestore and sets the API auth token.
+    ///
+    /// - Parameters:
+    ///   - email: The user's email address.
+    ///   - password: The user's password.
+    /// - Throws: Firebase Auth errors if sign-in fails.
     func signIn(email: String, password: String) async throws {
         isLoading = true
         errorMessage = nil
@@ -179,6 +216,13 @@ final class AuthService: ObservableObject {
         }
     }
 
+    /// Signs in a user using Google OAuth via Firebase Auth.
+    ///
+    /// For new users (no Firestore document), sets `needsRoleSelection` to `true` and
+    /// stores pending Google user data until `completeGoogleSignUp(role:)` is called.
+    /// For existing users, loads the profile from Firestore immediately.
+    ///
+    /// - Throws: An error if Google Sign-In or Firebase Auth fails.
     func signInWithGoogle() async throws {
         isLoading = true
         errorMessage = nil
@@ -244,6 +288,14 @@ final class AuthService: ObservableObject {
         }
     }
 
+    /// Completes the Google sign-up flow by creating the user profile with the selected role.
+    ///
+    /// Creates the user document in Firestore and, depending on the role, creates
+    /// associated shop (merchant) or driver documents. Called after the user selects
+    /// their role during a new Google sign-up.
+    ///
+    /// - Parameter role: The selected role ("user", "merchant", or "driver").
+    /// - Throws: An error if Firestore operations fail.
     func completeGoogleSignUp(role: String) async throws {
         guard let userId = pendingGoogleUserId,
               let email = pendingGoogleEmail,
@@ -336,6 +388,18 @@ final class AuthService: ObservableObject {
         }
     }
 
+    /// Creates a new user account with email and password via Firebase Auth.
+    ///
+    /// Creates the Firebase Auth user, sets the display name, stores the user profile
+    /// in Firestore, and creates role-specific documents (shop for merchants, driver
+    /// profile for drivers).
+    ///
+    /// - Parameters:
+    ///   - email: The user's email address.
+    ///   - password: The user's password (minimum 6 characters).
+    ///   - name: The user's display name.
+    ///   - role: The user's role. Defaults to `"user"`. Valid values: "user", "merchant", "driver".
+    /// - Throws: Firebase Auth errors if account creation fails.
     func signUp(email: String, password: String, name: String, role: String = "user") async throws {
         isLoading = true
         errorMessage = nil
@@ -450,6 +514,9 @@ final class AuthService: ObservableObject {
         }
     }
 
+    /// Signs out the current user from Firebase Auth and clears all local state.
+    ///
+    /// - Throws: An error if Firebase sign-out fails.
     func signOut() throws {
         if !demoMode {
             try Auth.auth().signOut()
@@ -464,6 +531,12 @@ final class AuthService: ObservableObject {
         APIService.shared.setAuthToken(nil)
     }
 
+    /// Updates the user's profile locally and persists changes to Firestore.
+    ///
+    /// - Parameters:
+    ///   - name: Updated display name.
+    ///   - phone: Updated phone number.
+    ///   - address: Updated address.
     func updateProfile(name: String, phone: String, address: String) {
         guard var profile = userProfile else { return }
         profile.name = name
@@ -481,6 +554,7 @@ final class AuthService: ObservableObject {
         }
     }
 
+    /// Forces a refresh of the Firebase ID token and updates the API service.
     func refreshToken() async {
         guard let user = currentUser else { return }
         if let token = try? await user.getIDToken(forcingRefresh: true) {
@@ -488,6 +562,10 @@ final class AuthService: ObservableObject {
         }
     }
 
+    /// Maps Firebase Auth error codes to localized French error messages.
+    ///
+    /// - Parameter error: The Firebase Auth error.
+    /// - Returns: A French error message string suitable for display.
     private func mapAuthError(_ error: Error) -> String {
         let nsError = error as NSError
         switch nsError.code {
@@ -512,42 +590,82 @@ final class AuthService: ObservableObject {
 }
 
 // MARK: - User Profile Model
+
+/// Represents a user's profile as stored in Firestore.
+///
+/// Contains identity, role, and optional merchant/driver-specific fields.
+/// The `role` field determines which UI flow the user sees after authentication.
 struct UserProfile: Equatable {
+    /// Firebase UID of the user.
     let id: String
+    /// The user's email address.
     var email: String
+    /// Display name of the user.
     var name: String
+    /// The user's role in the platform ("user", "merchant", "driver", or "admin").
     var role: String
+    /// Account status (e.g., "active", "suspended").
     var status: String
+    /// Optional phone number.
     var phone: String?
+    /// Optional street address.
     var address: String?
+    /// The Firestore document ID of the user's shop, if the user is a merchant.
     var shopId: String?
+    /// The user's Stripe Connect account ID, if onboarded.
     var stripeAccountId: String?
+    /// Timestamp when the user account was created.
     var createdAt: Date?
 }
 
 // MARK: - Data Service (Firebase Firestore)
+
+/// Central data service for reading and writing shops, products, orders, and deliveries
+/// to Firebase Firestore.
+///
+/// `DataService` provides both one-shot fetches and real-time snapshot listeners for
+/// orders and deliveries. It also manages the local in-memory cache of all domain objects
+/// and notifies the UI via `@Published` properties.
+///
+/// - Note: This is a singleton accessed via `DataService.shared`. All methods run on the main actor.
 @MainActor
 final class DataService: ObservableObject {
+    /// Shared singleton instance.
     static let shared = DataService()
 
+    /// All loaded shops.
     @Published var shops: [Shop] = []
+    /// All loaded products (may span multiple shops).
     @Published var products: [Product] = []
+    /// All loaded orders for the current user or shop context.
     @Published var orders: [Order] = []
+    /// All loaded deliveries (available and active) for the driver context.
     @Published var deliveries: [Delivery] = []
+    /// Whether a data operation is currently in progress.
     @Published var isLoading = false
+    /// User-facing error message from the last failed operation, if any.
     @Published var errorMessage: String?
 
+    /// Firestore database reference.
     private let db = Firestore.firestore()
+    /// Listener registration for real-time shop updates.
     private var shopsListener: ListenerRegistration?
+    /// Listener registration for real-time order updates.
     private var ordersListener: ListenerRegistration?
+    /// Listener registration for real-time available delivery updates.
     private var deliveriesListener: ListenerRegistration?
+    /// Listener registration for real-time driver-assigned order updates.
     private var driverOrdersListener: ListenerRegistration?
 
     private init() {}
 
     // MARK: - Real-time Listeners
 
-    /// Start listening to orders for a specific user (Client)
+    /// Starts a real-time Firestore snapshot listener for orders belonging to a specific customer.
+    ///
+    /// Orders are sorted by creation date (newest first). Status changes trigger local notifications.
+    ///
+    /// - Parameter userId: The Firebase UID of the customer whose orders to monitor.
     func startOrdersListener(forUser userId: String) {
         stopOrdersListener()
 
@@ -578,7 +696,11 @@ final class DataService: ObservableObject {
             }
     }
 
-    /// Start listening to orders for a specific shop (Merchant)
+    /// Starts a real-time Firestore snapshot listener for orders placed at a specific shop.
+    ///
+    /// Used by merchants to monitor incoming orders. New pending orders trigger local notifications.
+    ///
+    /// - Parameter shopId: The Firestore document ID of the shop whose orders to monitor.
     func startOrdersListener(forShop shopId: String) {
         stopOrdersListener()
 
@@ -609,8 +731,15 @@ final class DataService: ObservableObject {
             }
     }
 
-    /// Start listening to available deliveries (Driver)
-    /// Listens for: 1) "ready" orders without a driver (available), 2) orders assigned to this driver (active)
+    /// Starts real-time Firestore snapshot listeners for deliveries relevant to a driver.
+    ///
+    /// Sets up two listeners:
+    /// 1. Orders with status "ready" and no assigned driver (available for pickup).
+    /// 2. Orders assigned to this specific driver (active deliveries).
+    ///
+    /// New available deliveries trigger local push notifications.
+    ///
+    /// - Parameter driverId: The Firebase UID of the driver.
     func startDeliveriesListener(forDriver driverId: String) {
         stopDeliveriesListener()
 
@@ -702,6 +831,11 @@ final class DataService: ObservableObject {
             }
     }
 
+    /// Compares old and new order lists to detect status changes and send notifications.
+    ///
+    /// - Parameters:
+    ///   - oldOrders: The previous snapshot of orders.
+    ///   - newOrders: The newly received snapshot of orders.
     private func checkOrderStatusChanges(oldOrders: [Order], newOrders: [Order]) {
         for newOrder in newOrders {
             if let oldOrder = oldOrders.first(where: { $0.id == newOrder.id }) {
@@ -715,6 +849,11 @@ final class DataService: ObservableObject {
         }
     }
 
+    /// Detects newly received pending orders for a merchant and sends a notification.
+    ///
+    /// - Parameters:
+    ///   - oldOrders: The previous snapshot of orders.
+    ///   - newOrders: The newly received snapshot of orders.
     private func checkNewOrdersForMerchant(oldOrders: [Order], newOrders: [Order]) {
         let oldIds = Set(oldOrders.map { $0.id })
         let newOrdersReceived = newOrders.filter { !oldIds.contains($0.id) && $0.status == .pending }
@@ -727,6 +866,10 @@ final class DataService: ObservableObject {
         }
     }
 
+    /// Parses a Firestore order document into a `Delivery` model for the driver view.
+    ///
+    /// - Parameter document: The Firestore `DocumentSnapshot` containing order data.
+    /// - Returns: A `Delivery` instance, or `nil` if parsing fails.
     private func parseDeliveryFromOrder(_ document: DocumentSnapshot) -> Delivery? {
         let data = document.data() ?? [:]
         let orderId = document.documentID
@@ -760,11 +903,13 @@ final class DataService: ObservableObject {
         )
     }
 
+    /// Removes the active orders snapshot listener.
     func stopOrdersListener() {
         ordersListener?.remove()
         ordersListener = nil
     }
 
+    /// Removes the active deliveries and driver-orders snapshot listeners.
     func stopDeliveriesListener() {
         deliveriesListener?.remove()
         deliveriesListener = nil
@@ -772,6 +917,7 @@ final class DataService: ObservableObject {
         driverOrdersListener = nil
     }
 
+    /// Removes all active Firestore snapshot listeners (orders, deliveries, and shops).
     func stopAllListeners() {
         stopOrdersListener()
         stopDeliveriesListener()
@@ -780,6 +926,15 @@ final class DataService: ObservableObject {
     }
 
     // MARK: - Shops (Firestore)
+
+    /// Loads shops from Firestore, optionally filtered by category and/or search query.
+    ///
+    /// Category filtering is performed server-side via Firestore queries. Search filtering
+    /// is applied client-side using case-insensitive matching on name and address.
+    ///
+    /// - Parameters:
+    ///   - category: Optional category string to filter by (e.g., "grocery").
+    ///   - search: Optional search string for client-side name/address filtering.
     func loadShops(category: String? = nil, search: String? = nil) async {
         isLoading = true
         errorMessage = nil
@@ -816,6 +971,13 @@ final class DataService: ObservableObject {
         isLoading = false
     }
 
+    /// Parses a Firestore document into a `Shop` model.
+    ///
+    /// Handles multiple data formats for location (latitude/longitude vs lat/lng) and
+    /// category (single string vs French-language array).
+    ///
+    /// - Parameter document: The Firestore `DocumentSnapshot` containing shop data.
+    /// - Returns: A `Shop` instance, or `nil` if parsing fails.
     private func parseShop(from document: DocumentSnapshot) -> Shop? {
         let data = document.data() ?? [:]
         let id = document.documentID
@@ -864,19 +1026,37 @@ final class DataService: ObservableObject {
         )
     }
 
+    /// Returns all currently open shops from the local cache.
+    ///
+    /// - Returns: An array of open `Shop` objects.
     func getShops() -> [Shop] {
         shops.filter { $0.isOpen }
     }
 
+    /// Returns a single shop by its ID from the local cache.
+    ///
+    /// - Parameter id: The Firestore document ID of the shop.
+    /// - Returns: The matching `Shop`, or `nil` if not found.
     func getShop(id: String) -> Shop? {
         shops.first { $0.id == id }
     }
 
+    /// Returns all open shops matching the given category from the local cache.
+    ///
+    /// - Parameter category: The `ShopCategory` to filter by.
+    /// - Returns: An array of open `Shop` objects in the specified category.
     func getShopsByCategory(_ category: ShopCategory) -> [Shop] {
         shops.filter { $0.category == category && $0.isOpen }
     }
 
     // MARK: - Products (Firestore)
+
+    /// Loads active products for a given shop from Firestore.
+    ///
+    /// Products are merged into the local cache: existing entries are updated and
+    /// new entries are appended.
+    ///
+    /// - Parameter shopId: The Firestore document ID of the shop whose products to load.
     func loadProducts(forShop shopId: String) async {
         isLoading = true
         errorMessage = nil
@@ -911,6 +1091,10 @@ final class DataService: ObservableObject {
         isLoading = false
     }
 
+    /// Parses a Firestore document into a `Product` model.
+    ///
+    /// - Parameter document: The Firestore `DocumentSnapshot` containing product data.
+    /// - Returns: A `Product` instance, or `nil` if parsing fails.
     private func parseProduct(from document: DocumentSnapshot) -> Product? {
         let data = document.data() ?? [:]
         let id = document.documentID
@@ -928,15 +1112,27 @@ final class DataService: ObservableObject {
         )
     }
 
+    /// Returns available products for a given shop from the local cache.
+    ///
+    /// - Parameter shopId: The shop ID to filter by.
+    /// - Returns: An array of available `Product` objects belonging to the shop.
     func getProducts(forShop shopId: String) -> [Product] {
         products.filter { $0.shopId == shopId && $0.isAvailable }
     }
 
+    /// Returns a single product by its ID from the local cache.
+    ///
+    /// - Parameter id: The Firestore document ID of the product.
+    /// - Returns: The matching `Product`, or `nil` if not found.
     func getProduct(id: String) -> Product? {
         products.first { $0.id == id }
     }
 
     // MARK: - Orders (Firestore)
+
+    /// Loads all orders for the currently authenticated user from Firestore.
+    ///
+    /// Orders are sorted by creation date (newest first). Requires an authenticated user.
     func loadOrders() async {
         guard let userId = AuthService.shared.userProfile?.id else { return }
 
@@ -965,6 +1161,11 @@ final class DataService: ObservableObject {
         isLoading = false
     }
 
+    /// Loads all orders for a specific shop from Firestore.
+    ///
+    /// Used by merchants to view their shop's order history, sorted by creation date (newest first).
+    ///
+    /// - Parameter shopId: The Firestore document ID of the shop.
     func loadOrdersForShop(shopId: String) async {
         isLoading = true
         errorMessage = nil
@@ -991,6 +1192,12 @@ final class DataService: ObservableObject {
         isLoading = false
     }
 
+    /// Parses a Firestore document into an `Order` model.
+    ///
+    /// Handles parsing of nested items, delivery location, dates, and status mapping.
+    ///
+    /// - Parameter document: The Firestore `DocumentSnapshot` containing order data.
+    /// - Returns: An `Order` instance, or `nil` if parsing fails.
     private func parseOrder(from document: DocumentSnapshot) -> Order? {
         let data = document.data() ?? [:]
         let id = document.documentID
@@ -1050,6 +1257,16 @@ final class DataService: ObservableObject {
         )
     }
 
+    /// Creates a new order in Firestore and adds it to the local cache.
+    ///
+    /// Calculates subtotal, delivery fee, and total. Generates an order reference and
+    /// stores the order with payment information if a PaymentIntent was created.
+    ///
+    /// - Parameters:
+    ///   - orderRequest: The `CreateOrderRequest` containing items and delivery details.
+    ///   - paymentIntentId: Optional Stripe PaymentIntent ID if payment was processed.
+    /// - Returns: The newly created `Order`.
+    /// - Throws: An error if the user is not authenticated or Firestore write fails.
     func createOrder(_ orderRequest: CreateOrderRequest, paymentIntentId: String? = nil) async throws -> Order {
         isLoading = true
         defer { isLoading = false }
@@ -1123,6 +1340,11 @@ final class DataService: ObservableObject {
         return order
     }
 
+    /// Updates the status of an order in Firestore and the local cache.
+    ///
+    /// - Parameters:
+    ///   - orderId: The Firestore document ID of the order.
+    ///   - status: The new `OrderStatus` to set.
     func updateOrderStatus(_ orderId: String, status: OrderStatus) async {
         do {
             try await db.collection("orders").document(orderId).updateData([
@@ -1157,15 +1379,30 @@ final class DataService: ObservableObject {
         }
     }
 
+    /// Returns orders for a specific user from the local cache, sorted by newest first.
+    ///
+    /// - Parameter userId: The Firebase UID of the user.
+    /// - Returns: An array of `Order` objects sorted by creation date (descending).
     func getOrders(forUser userId: String) -> [Order] {
         orders.filter { $0.userId == userId }.sorted { $0.createdAt > $1.createdAt }
     }
 
+    /// Returns orders for a specific shop from the local cache, sorted by newest first.
+    ///
+    /// - Parameter shopId: The Firestore document ID of the shop.
+    /// - Returns: An array of `Order` objects sorted by creation date (descending).
     func getOrders(forShop shopId: String) -> [Order] {
         orders.filter { $0.shopId == shopId }.sorted { $0.createdAt > $1.createdAt }
     }
 
     // MARK: - Shop Resolution
+
+    /// Resolves the Firestore document ID of a shop owned by the given user.
+    ///
+    /// Queries the `shops` collection for the first shop with a matching `ownerId`.
+    ///
+    /// - Parameter ownerId: The Firebase UID of the shop owner.
+    /// - Returns: The shop's document ID, or `nil` if no shop is found.
     func resolveShopId(forOwner ownerId: String) async -> String? {
         do {
             let snapshot = try await db.collection("shops")
@@ -1178,6 +1415,14 @@ final class DataService: ObservableObject {
         }
     }
 
+    /// Updates a shop's data in Firestore and refreshes the local cache.
+    ///
+    /// Automatically adds an `updatedAt` timestamp to the update payload.
+    ///
+    /// - Parameters:
+    ///   - shopId: The Firestore document ID of the shop to update.
+    ///   - data: A dictionary of fields to update.
+    /// - Throws: A Firestore error if the update fails.
     func updateShop(shopId: String, data: [String: Any]) async throws {
         var updateData = data
         updateData["updatedAt"] = Timestamp(date: Date())
@@ -1193,6 +1438,17 @@ final class DataService: ObservableObject {
     }
 
     // MARK: - Driver (Firestore)
+
+    /// Reports the driver's current GPS location to Firestore.
+    ///
+    /// Updates both the driver's document and any active order assigned to the driver,
+    /// enabling real-time tracking on the customer side.
+    ///
+    /// - Parameters:
+    ///   - latitude: Current latitude.
+    ///   - longitude: Current longitude.
+    ///   - heading: Optional compass heading in degrees.
+    ///   - speed: Optional speed in meters per second.
     func updateDriverLocation(latitude: Double, longitude: Double, heading: Double? = nil, speed: Double? = nil) async {
         guard let userId = AuthService.shared.userProfile?.id else { return }
 
@@ -1222,6 +1478,9 @@ final class DataService: ObservableObject {
         }
     }
 
+    /// Updates the driver's availability status in Firestore.
+    ///
+    /// - Parameter status: The new status string (e.g., "online", "offline", "busy").
     func updateDriverStatus(_ status: String) async {
         guard let userId = AuthService.shared.userProfile?.id else { return }
 
@@ -1235,6 +1494,8 @@ final class DataService: ObservableObject {
     }
 
     // MARK: - Deliveries
+
+    /// Loads all available deliveries (orders with status "ready" and no assigned driver) from Firestore.
     func loadAvailableDeliveries() async {
         isLoading = true
 
@@ -1284,18 +1545,38 @@ final class DataService: ObservableObject {
         isLoading = false
     }
 
+    /// Returns all deliveries with status `.available` from the local cache.
+    ///
+    /// - Returns: An array of available `Delivery` objects.
     func getAvailableDeliveries() -> [Delivery] {
         deliveries.filter { $0.status == .available }
     }
 
+    /// Returns the currently active delivery for a specific driver, if any.
+    ///
+    /// An active delivery is one that is assigned to the driver and is neither delivered nor available.
+    ///
+    /// - Parameter driverId: The Firebase UID of the driver.
+    /// - Returns: The active `Delivery`, or `nil` if the driver has no active delivery.
     func getActiveDelivery(forDriver driverId: String) -> Delivery? {
         deliveries.first { $0.driverId == driverId && $0.status != .delivered && $0.status != .available }
     }
 
+    /// Returns all completed deliveries for a specific driver from the local cache.
+    ///
+    /// - Parameter driverId: The Firebase UID of the driver.
+    /// - Returns: An array of delivered `Delivery` objects.
     func getCompletedDeliveries(forDriver driverId: String) -> [Delivery] {
         deliveries.filter { $0.driverId == driverId && $0.status == .delivered }
     }
 
+    /// Accepts a delivery assignment for a driver using a Firestore batch write.
+    ///
+    /// Updates the order document to assign the driver and the driver document to set status to "busy".
+    ///
+    /// - Parameters:
+    ///   - deliveryId: The Firestore document ID of the order/delivery to accept.
+    ///   - driverId: The Firebase UID of the driver accepting the delivery.
     func acceptDelivery(_ deliveryId: String, driverId: String) async {
         do {
             let batch = db.batch()
@@ -1323,6 +1604,16 @@ final class DataService: ObservableObject {
         }
     }
 
+    /// Updates a delivery's status in the local cache and syncs the corresponding order status to Firestore.
+    ///
+    /// Maps `DeliveryStatus` to `OrderStatus` for the underlying order:
+    /// - `.pickedUp` maps to `OrderStatus.pickedUp`
+    /// - `.delivering` maps to `OrderStatus.delivering`
+    /// - `.delivered` maps to `OrderStatus.delivered`
+    ///
+    /// - Parameters:
+    ///   - deliveryId: The Firestore document ID of the delivery/order.
+    ///   - status: The new `DeliveryStatus` to set.
     func updateDeliveryStatus(_ deliveryId: String, status: DeliveryStatus) async {
         if let index = deliveries.firstIndex(where: { $0.id == deliveryId }) {
             deliveries[index].status = status
@@ -1347,6 +1638,13 @@ final class DataService: ObservableObject {
     }
 
     // MARK: - Product Management
+
+    /// Adds a new product to Firestore and appends it to the local cache.
+    ///
+    /// The product is stored with the Firestore-generated document ID.
+    ///
+    /// - Parameter product: The `Product` to add. The `id` field is replaced with the generated Firestore ID.
+    /// - Throws: A Firestore error if the write fails.
     func addProduct(_ product: Product) async throws {
         let productData: [String: Any] = [
             "name": product.name,
@@ -1375,6 +1673,10 @@ final class DataService: ObservableObject {
         products.append(newProduct)
     }
 
+    /// Updates an existing product in Firestore and refreshes the local cache.
+    ///
+    /// - Parameter product: The `Product` with updated fields. Matched by `id`.
+    /// - Throws: A Firestore error if the update fails.
     func updateProduct(_ product: Product) async throws {
         try await db.collection("products").document(product.id).updateData([
             "name": product.name,
@@ -1390,12 +1692,25 @@ final class DataService: ObservableObject {
         }
     }
 
+    /// Deletes a product from Firestore and removes it from the local cache.
+    ///
+    /// - Parameter id: The Firestore document ID of the product to delete.
+    /// - Throws: A Firestore error if the deletion fails.
     func deleteProduct(id: String) async throws {
         try await db.collection("products").document(id).delete()
         products.removeAll { $0.id == id }
     }
 
     // MARK: - Statistics
+
+    /// Computes aggregated statistics for a merchant's shop over the specified time period.
+    ///
+    /// Statistics are derived from the local orders and products cache.
+    ///
+    /// - Parameters:
+    ///   - shopId: The Firestore document ID of the shop.
+    ///   - period: The time period to aggregate over. Defaults to `.today`.
+    /// - Returns: A `MerchantStats` instance with order counts, revenue, and product totals.
     func getMerchantStats(shopId: String, period: StatsPeriod = .today) -> MerchantStats {
         let shopOrders = orders.filter { $0.shopId == shopId }
         let calendar = Calendar.current
@@ -1421,6 +1736,10 @@ final class DataService: ObservableObject {
         )
     }
 
+    /// Computes aggregated statistics for a driver based on the local deliveries cache.
+    ///
+    /// - Parameter driverId: The Firebase UID of the driver.
+    /// - Returns: A `DriverStats` instance with delivery counts and earnings.
     func getDriverStats(driverId: String) -> DriverStats {
         let driverDeliveries = deliveries.filter { $0.driverId == driverId }
         let today = Calendar.current.startOfDay(for: Date())
@@ -1436,12 +1755,29 @@ final class DataService: ObservableObject {
 }
 
 // MARK: - Cart Manager
+
+/// Manages the user's shopping cart, enforcing single-shop ordering.
+///
+/// `CartManager` wraps a `Cart` value type and provides convenience methods
+/// for adding, removing, and updating items. If a product from a different shop
+/// is added, the cart is automatically cleared first.
+///
+/// Also provides computed properties for subtotal, delivery fee, total, and
+/// age-restriction checks for KYC-gated products.
 @MainActor
 final class CartManager: ObservableObject {
+    /// The underlying cart data structure.
     @Published var cart = Cart()
+    /// The ID of the shop whose products are currently in the cart.
     @Published var currentShopId: String?
+    /// The display name of the shop whose products are currently in the cart.
     @Published var currentShopName: String?
 
+    /// Adds a product to the cart, clearing the cart first if switching shops.
+    ///
+    /// - Parameters:
+    ///   - product: The `Product` to add.
+    ///   - quantity: Number of units to add. Defaults to 1.
     func addToCart(_ product: Product, quantity: Int = 1) {
         if let currentShop = currentShopId, currentShop != product.shopId {
             cart.clear()
@@ -1460,6 +1796,9 @@ final class CartManager: ObservableObject {
         cart.add(cartProduct, quantity: quantity)
     }
 
+    /// Removes a product from the cart by its ID. Clears shop context if the cart becomes empty.
+    ///
+    /// - Parameter productId: The ID of the product to remove.
     func removeFromCart(_ productId: String) {
         cart.remove(productId)
         if cart.isEmpty {
@@ -1468,6 +1807,11 @@ final class CartManager: ObservableObject {
         }
     }
 
+    /// Updates the quantity of a product in the cart. Removes the product if quantity is zero or less.
+    ///
+    /// - Parameters:
+    ///   - productId: The ID of the product to update.
+    ///   - quantity: The new quantity.
     func updateQuantity(_ productId: String, quantity: Int) {
         cart.updateQuantity(productId, quantity: quantity)
         if cart.isEmpty {

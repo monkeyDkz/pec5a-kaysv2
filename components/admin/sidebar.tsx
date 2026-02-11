@@ -16,6 +16,7 @@ import {
   Leaf,
   Boxes,
   Truck,
+  MessageSquare,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -33,6 +34,7 @@ const navigationGroups = [
       { href: "/orders", label: "orders", icon: ShoppingCart },
       { href: "/catalog", label: "catalog", icon: Boxes },
       { href: "/drivers", label: "drivers", icon: Truck },
+      { href: "/chat", label: "chat", icon: MessageSquare },
     ],
   },
   {
@@ -75,7 +77,7 @@ export function Sidebar() {
       aria-label="Menu principal"
       className={cn(
         "fixed left-0 top-0 z-40 h-screen border-r border-sidebar-border bg-sidebar transition-all duration-300",
-        collapsed ? "w-16" : "w-64",
+        collapsed ? "w-16" : "w-64"
       )}
     >
       <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
@@ -105,7 +107,7 @@ export function Sidebar() {
                       className={cn(
                         "w-full justify-start gap-3",
                         collapsed && "justify-center px-2",
-                        isActive && "bg-primary text-primary-foreground hover:bg-primary/90",
+                        isActive && "bg-primary text-primary-foreground hover:bg-primary/90"
                       )}
                       aria-label={collapsed ? t(item.label) : undefined}
                     >
@@ -121,7 +123,13 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-sidebar-border p-4">
-        <Button variant="ghost" size="icon" onClick={() => setCollapsed(!collapsed)} className="w-full" aria-label={collapsed ? "Ouvrir le menu" : "Réduire le menu"}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setCollapsed(!collapsed)}
+          className="w-full"
+          aria-label={collapsed ? "Ouvrir le menu" : "Réduire le menu"}
+        >
           {collapsed ? (
             <ChevronRight className="h-4 w-4" />
           ) : (

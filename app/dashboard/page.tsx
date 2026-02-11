@@ -4,7 +4,10 @@ import { useEffect, useState } from "react"
 import { DollarSign, Users, FileCheck, AlertCircle } from "lucide-react"
 import { AdminLayout } from "@/components/admin/admin-layout"
 import { KPICard } from "@/components/admin/kpi-card"
-import { ActivityChart } from "@/components/admin/activity-chart"
+import dynamic from "next/dynamic"
+const ActivityChart = dynamic(() => import("@/components/admin/activity-chart").then((m) => m.ActivityChart), {
+  ssr: false,
+})
 import { RecentActivity } from "@/components/admin/recent-activity"
 import { AnalyticsWidget } from "@/components/admin/analytics-widget"
 import { ActivityLog } from "@/components/admin/activity-log"
@@ -60,26 +63,14 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <KPICard
-            title={t("totalRevenue")}
-            value={revenue}
-            icon={<DollarSign className="h-4 w-4" />}
-          />
-          <KPICard
-            title={t("activeUsers")}
-            value={activeUsers}
-            icon={<Users className="h-4 w-4" />}
-          />
+          <KPICard title={t("totalRevenue")} value={revenue} icon={<DollarSign className="h-4 w-4" />} />
+          <KPICard title={t("activeUsers")} value={activeUsers} icon={<Users className="h-4 w-4" />} />
           <KPICard
             title={t("pendingVerifications")}
             value={pendingVerifications}
             icon={<FileCheck className="h-4 w-4" />}
           />
-          <KPICard
-            title={t("openDisputes")}
-            value={openDisputes}
-            icon={<AlertCircle className="h-4 w-4" />}
-          />
+          <KPICard title={t("openDisputes")} value={openDisputes} icon={<AlertCircle className="h-4 w-4" />} />
         </div>
 
         <AnalyticsWidget />

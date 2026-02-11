@@ -9,7 +9,7 @@ service firebase.storage {
     // KYC verification documents - only authenticated users can upload their own
     match /verifications/{userId}/{fileName} {
       allow read: if request.auth != null &&
-        (request.auth.uid == userId || isAdmin());
+        (request.auth.uid == userId || isAdminOrSupervisor());
       allow write: if request.auth != null &&
         request.auth.uid == userId &&
         request.resource.size < 10 * 1024 * 1024 && // Max 10 MB
@@ -58,10 +58,10 @@ service firebase.storage {
          request.resource.contentType.matches('application/pdf'));
     }
 
-    // Helper: check if user is admin
-    function isAdmin() {
-      return request.auth != null &&
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    // Helper: check if user is admin or supervisor
+    function isAdminOrSupervisor() {
+      let role = firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role;
+      return request.auth != null && (role == 'admin' || role == 'supervisor');
     }
   }
 }

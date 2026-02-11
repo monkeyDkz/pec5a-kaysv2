@@ -24,6 +24,7 @@ const translations = {
     products: "Products",
     merchants: "Merchants",
     drivers: "Drivers",
+    chat: "Chat",
 
     // Dashboard
     overviewOfOperations: "Overview of GreenDrop operations and key metrics",
@@ -163,6 +164,7 @@ const translations = {
     products: "Produits",
     merchants: "Marchands",
     drivers: "Chauffeurs",
+    chat: "Chat",
 
     // Dashboard
     overviewOfOperations: "Aperçu des opérations et métriques clés de GreenDrop",

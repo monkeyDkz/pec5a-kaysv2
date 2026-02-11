@@ -2,7 +2,7 @@ export interface User {
   id: string
   email: string
   name: string
-  role: "admin" | "user" | "driver" | "merchant"
+  role: "admin" | "supervisor" | "user" | "driver" | "merchant"
   status: "pending" | "verified" | "rejected"
   createdAt: string
   phone?: string
@@ -218,4 +218,23 @@ export interface LegalZone {
   coordinates: MapCoordinate[]
   active: boolean
   color?: string
+}
+
+export interface ChatMessage {
+  id: string
+  orderId: string
+  senderId: string
+  senderName: string
+  senderRole: string
+  content: string
+  timestamp: string
+  isRead: boolean
+}
+
+export interface ChatThread {
+  orderId: string
+  participants: string[]
+  lastMessage?: string
+  lastMessageAt?: string
+  unreadCount?: number
 }

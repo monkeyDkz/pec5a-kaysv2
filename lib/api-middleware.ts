@@ -5,7 +5,7 @@ import crypto from "crypto"
 
 export interface AuthenticatedRequest extends NextRequest {
   userId?: string
-  userRole?: "admin" | "user" | "merchant" | "driver"
+  userRole?: "admin" | "supervisor" | "user" | "merchant" | "driver"
 }
 
 // CSRF Protection: secret key for token generation
@@ -42,7 +42,7 @@ export function verifyCsrfToken(token: string, sessionId: string): boolean {
  */
 export function withCsrfProtection(
   handler: (request: NextRequest, auth: { userId: string; userRole: string }) => Promise<NextResponse>,
-  options?: { requiredRole?: "admin" | "merchant" | "driver" }
+  options?: { requiredRole?: "admin" | "supervisor" | "merchant" | "driver" }
 ) {
   return withAuth(async (request, auth) => {
     const method = request.method.toUpperCase()
@@ -65,7 +65,7 @@ export function withCsrfProtection(
  */
 export async function verifyAuth(request: NextRequest): Promise<{
   userId: string
-  userRole: "admin" | "user" | "merchant" | "driver"
+  userRole: "admin" | "supervisor" | "user" | "merchant" | "driver"
 } | null> {
   try {
     const authHeader = request.headers.get("Authorization")
@@ -101,7 +101,10 @@ export async function verifyAuth(request: NextRequest): Promise<{
  */
 export function withAuth(
   handler: (request: NextRequest, auth: { userId: string; userRole: string }) => Promise<NextResponse>,
-  options?: { requiredRole?: "admin" | "merchant" | "driver"; rateLimit?: { limit?: number; windowSec?: number } }
+  options?: {
+    requiredRole?: "admin" | "supervisor" | "merchant" | "driver"
+    rateLimit?: { limit?: number; windowSec?: number }
+  }
 ) {
   return async (request: NextRequest) => {
     // Rate limiting check
@@ -117,8 +120,13 @@ export function withAuth(
       )
     }
 
-    // Vérifier le rôle si requis
-    if (options?.requiredRole && auth.userRole !== "admin" && auth.userRole !== options.requiredRole) {
+    // Vérifier le rôle si requis (admin et supervisor ont accès à tout)
+    if (
+      options?.requiredRole &&
+      auth.userRole !== "admin" &&
+      auth.userRole !== "supervisor" &&
+      auth.userRole !== options.requiredRole
+    ) {
       return NextResponse.json(
         { error: "Forbidden", message: `Accès réservé aux ${options.requiredRole}s` },
         { status: 403 }

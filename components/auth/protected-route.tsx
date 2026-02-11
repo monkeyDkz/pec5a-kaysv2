@@ -16,10 +16,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const router = useRouter()
   const pathname = usePathname()
 
-const allowSetup = process.env.NEXT_PUBLIC_ALLOW_SETUP === "true"
+  const allowSetup = process.env.NEXT_PUBLIC_ALLOW_SETUP === "true"
 
-const isPublicRoute =
-  publicRoutes.some((route) => pathname.startsWith(route)) || (allowSetup && pathname.startsWith("/setup"))
+  const isPublicRoute =
+    publicRoutes.some((route) => pathname.startsWith(route)) || (allowSetup && pathname.startsWith("/setup"))
 
   useEffect(() => {
     if (!loading) {
@@ -29,7 +29,12 @@ const isPublicRoute =
       } else if (user && isPublicRoute) {
         // Already logged in and trying to access public route
         router.push("/dashboard")
-      } else if (user && userProfile && !["admin", "merchant"].includes(userProfile.role) && !isPublicRoute) {
+      } else if (
+        user &&
+        userProfile &&
+        !["admin", "supervisor", "merchant"].includes(userProfile.role) &&
+        !isPublicRoute
+      ) {
         // User is not an admin or merchant
         router.push("/unauthorized")
       }

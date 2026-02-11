@@ -1,0 +1,163 @@
+name: iOS Simulator Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+  # Lancement manuel depuis l'onglet Actions de GitHub
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (ex: v1.0.0-beta)'
+        required: true
+        default: 'v1.0.0-beta'
+
+jobs:
+  build-ios-simulator:
+    name: Build iOS (Simulator)
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ios/GreenDrop
+
+    steps:
+      # ── 1. Checkout ──
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Sélection de Xcode ──
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+          echo "── Xcode version ──"
+          xcodebuild -version
+          echo "── Available simulators ──"
+          xcrun simctl list runtimes
+
+      # ── 3. Cache des dépendances SPM ──
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: .swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('ios/GreenDrop/GreenDrop.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      # ── 4. Résolution des dépendances ──
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project GreenDrop.xcodeproj \
+            -scheme GreenDrop \
+            -clonedSourcePackagesDirPath ../../.swiftpm
+
+      # ── 5. Build pour Simulateur iOS ──
+      - name: Build for iOS Simulator
+        run: |
+          xcodebuild build \
+            -project GreenDrop.xcodeproj \
+            -scheme GreenDrop \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath $RUNNER_TEMP/DerivedData \
+            -clonedSourcePackagesDirPath ../../.swiftpm \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO
+
+      # ── 6. Tests unitaires ──
+      - name: Run unit tests
+        run: |
+          xcodebuild test \
+            -project GreenDrop.xcodeproj \
+            -scheme GreenDrop \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,name=iPhone 16,OS=latest" \
+            -derivedDataPath $RUNNER_TEMP/DerivedData \
+            -clonedSourcePackagesDirPath ../../.swiftpm \
+            CODE_SIGNING_ALLOWED=NO || true
+
+      # ── 7. Packager le .app en zip ──
+      - name: Package simulator build
+        run: |
+          APP_PATH=$(find $RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator -name "GreenDrop.app" -type d | head -1)
+
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::GreenDrop.app not found in build products"
+            find $RUNNER_TEMP/DerivedData/Build/Products/ -name "*.app" -type d || true
+            exit 1
+          fi
+
+          echo "Found app: $APP_PATH"
+
+          # Déterminer la version
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+          # Zipper le .app
+          cd "$(dirname "$APP_PATH")"
+          zip -r -y $RUNNER_TEMP/GreenDrop-Simulator-$VERSION.zip GreenDrop.app
+
+          ls -lh $RUNNER_TEMP/GreenDrop-Simulator-$VERSION.zip
+
+      # ── 8. Créer la GitHub Release ──
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: "GreenDrop iOS ${{ env.VERSION }}"
+          body: |
+            ## GreenDrop iOS - ${{ env.VERSION }}
+
+            ### Comment installer (Simulateur)
+
+            **Prerequis :** Mac avec Xcode 15+ installe
+
+            **Methode 1 - Drag & drop :**
+            1. Telecharger `GreenDrop-Simulator-${{ env.VERSION }}.zip` ci-dessous
+            2. Decompresser le fichier
+            3. Ouvrir le Simulateur iOS (Xcode > Open Developer Tool > Simulator)
+            4. Choisir un iPhone avec iOS 17+ (iPhone 15, 16...)
+            5. Glisser-deposer `GreenDrop.app` sur la fenetre du simulateur
+
+            **Methode 2 - Terminal :**
+            ```bash
+            unzip GreenDrop-Simulator-${{ env.VERSION }}.zip
+            xcrun simctl boot "iPhone 16"
+            open -a Simulator
+            xcrun simctl install booted GreenDrop.app
+            xcrun simctl launch booted com.greendrop.app
+            ```
+
+            ### Tester sur un vrai iPhone (sans Apple Developer Account)
+
+            Chaque testeur doit :
+            1. Avoir un Mac avec Xcode 15+
+            2. Cloner le repo : `git clone ${{ github.server_url }}/${{ github.repository }}.git`
+            3. Ouvrir `ios/GreenDrop/GreenDrop.xcodeproj`
+            4. Signing & Capabilities > changer le Team par son Apple ID personnel
+            5. Brancher son iPhone en USB, le selectionner et lancer (Cmd+R)
+            6. Sur iPhone : Reglages > General > Gestion des appareils > Faire confiance
+
+            > Le build via Apple ID gratuit expire apres 7 jours.
+
+            ### Comptes de test
+            | Role | Email | Mot de passe |
+            |------|-------|-------------|
+            | Client | user@test.com | test123 |
+            | Chauffeur | driver@test.com | test123 |
+            | Marchand | merchant@test.com | test123 |
+          draft: false
+          prerelease: ${{ contains(env.VERSION, 'beta') || contains(env.VERSION, 'alpha') }}
+          files: ${{ runner.temp }}/GreenDrop-Simulator-${{ env.VERSION }}.zip
+          generate_release_notes: true
+          append_body: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

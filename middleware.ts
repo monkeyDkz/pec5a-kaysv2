@@ -33,6 +33,7 @@ export function middleware(request: NextRequest) {
     "/disputes",
     "/legal-zones",
     "/config",
+    "/chat",
   ]
 
   const isAdminRoute = adminRoutes.some((route) => pathname.startsWith(route))

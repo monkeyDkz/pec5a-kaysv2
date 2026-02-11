@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { CheckCircle, XCircle, FileText, User, Paperclip, Download, Clock } from "lucide-react"
+import { StorageImage } from "@/components/admin/storage-image"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -21,13 +22,7 @@ interface VerificationCardProps {
   onReject?: (verificationId: string, reason?: string) => Promise<void> | void
 }
 
-export function VerificationCard({
-  verification,
-  userName,
-  userEmail,
-  onApprove,
-  onReject,
-}: VerificationCardProps) {
+export function VerificationCard({ verification, userName, userEmail, onApprove, onReject }: VerificationCardProps) {
   const [showDetails, setShowDetails] = useState(false)
   const [showRejectDialog, setShowRejectDialog] = useState(false)
   const [rejectReason, setRejectReason] = useState("")
@@ -186,7 +181,8 @@ export function VerificationCard({
           {latestHistoryEntry && (
             <div className="text-xs text-muted-foreground">
               Last action: <span className="font-medium capitalize">{latestHistoryEntry.action}</span> by{" "}
-              <span className="font-medium">{latestHistoryEntry.actor}</span> ({formatDateTime(latestHistoryEntry.timestamp)})
+              <span className="font-medium">{latestHistoryEntry.actor}</span> (
+              {formatDateTime(latestHistoryEntry.timestamp)})
             </div>
           )}
           <Button variant="outline" onClick={() => setShowDetails(true)} className="w-full bg-transparent">
@@ -243,7 +239,7 @@ export function VerificationCard({
                         </div>
                         {visual ? (
                           <div className="mt-3 overflow-hidden rounded-md border bg-muted">
-                            <img
+                            <StorageImage
                               src={attachment.url}
                               alt={attachment.label}
                               className="h-52 w-full object-cover"
@@ -277,7 +273,9 @@ export function VerificationCard({
                   {verification.firstName && (
                     <div className="flex items-center justify-between text-xs">
                       <dt className="text-muted-foreground">Name</dt>
-                      <dd className="font-medium">{verification.firstName} {verification.lastName}</dd>
+                      <dd className="font-medium">
+                        {verification.firstName} {verification.lastName}
+                      </dd>
                     </div>
                   )}
                   {verification.dateOfBirth && (
@@ -289,7 +287,9 @@ export function VerificationCard({
                   {verification.documentType && (
                     <div className="flex items-center justify-between text-xs">
                       <dt className="text-muted-foreground">Document Type</dt>
-                      <dd className="font-medium">{documentTypeLabels[verification.documentType] || verification.documentType}</dd>
+                      <dd className="font-medium">
+                        {documentTypeLabels[verification.documentType] || verification.documentType}
+                      </dd>
                     </div>
                   )}
                   {verification.documentNumber && (

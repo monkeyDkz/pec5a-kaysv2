@@ -20,6 +20,11 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
+    function isSupervisor() {
+      return isAuthenticated() &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'supervisor';
+    }
+
     function isMerchant() {
       return isAuthenticated() &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'merchant';
@@ -32,8 +37,8 @@ service cloud.firestore {
 
     // Users collection
     match /users/{userId} {
-      // Allow users to read their own profile
-      allow read: if isOwner(userId) || isAdmin();
+      // Allow users to read their own profile, supervisors can read all
+      allow read: if isOwner(userId) || isAdmin() || isSupervisor();
 
       // Allow users to create their own profile on signup
       allow create: if isOwner(userId) || isAdmin();
@@ -50,10 +55,10 @@ service cloud.firestore {
 
     // Orders collection
     match /orders/{orderId} {
-      // Admins can read all orders
+      // Admins and supervisors can read all orders
       // Drivers can read orders assigned to them or available orders
       // Users can read their own orders
-      allow read: if isAdmin() ||
+      allow read: if isAdmin() || isSupervisor() ||
                     isDriver() ||
                     isMerchant() ||
                     (isAuthenticated() && resource.data.userId == request.auth.uid);
@@ -99,9 +104,9 @@ service cloud.firestore {
 
     // Drivers collection
     match /drivers/{driverId} {
-      // Admins can read all drivers
+      // Admins and supervisors can read all drivers
       // Drivers can read their own profile
-      allow read: if isAdmin() || isOwner(driverId);
+      allow read: if isAdmin() || isSupervisor() || isOwner(driverId);
 
       // Drivers can create their own profile, admins can create any
       allow create: if isAdmin() || isOwner(driverId);
@@ -131,9 +136,9 @@ service cloud.firestore {
 
     // Verifications collection
     match /verifications/{verificationId} {
-      // Admins can read all verifications
+      // Admins and supervisors can read all verifications
       // Users can read their own verification
-      allow read: if isAdmin() || isOwner(verificationId);
+      allow read: if isAdmin() || isSupervisor() || isOwner(verificationId);
       
       // Only authenticated users can create verifications
       allow create: if isAuthenticated();
@@ -144,17 +149,19 @@ service cloud.firestore {
 
     // Disputes collection
     match /disputes/{disputeId} {
-      // Admins can read all disputes
+      // Admins and supervisors can read all disputes
       // Users can read their own disputes
-      allow read: if isAdmin() || 
+      allow read: if isAdmin() || isSupervisor() ||
                     isOwner(resource.data.userId) ||
                     (isDriver() && resource.data.driverId == request.auth.uid);
-      
+
       // Authenticated users can create disputes
       allow create: if isAuthenticated();
-      
-      // Only admins can update/delete disputes
-      allow update, delete: if isAdmin();
+
+      // Admins and supervisors can update disputes (moderate)
+      // Only admins can delete disputes
+      allow update: if isAdmin() || isSupervisor();
+      allow delete: if isAdmin();
     }
 
     // Legal zones collection
@@ -183,25 +190,25 @@ service cloud.firestore {
 
     // Activity logs collection
     match /activity-logs/{logId} {
-      // Admins can read all activity logs
+      // Admins and supervisors can read all activity logs
       // Users can read logs related to their entities
-      allow read: if isAdmin() || 
-                    (isAuthenticated() && 
-                     (resource.data.userId == request.auth.uid || 
+      allow read: if isAdmin() || isSupervisor() ||
+                    (isAuthenticated() &&
+                     (resource.data.userId == request.auth.uid ||
                       resource.data.entityId == request.auth.uid));
-      
+
       // Only system (via Cloud Functions) and admins can create activity logs
       allow create: if isAdmin();
-      
+
       // No one can update or delete activity logs (immutable audit trail)
       allow update, delete: if false;
     }
-    
+
     // Alternative collection name
     match /activityLogs/{logId} {
-      allow read: if isAdmin() || 
-                    (isAuthenticated() && 
-                     (resource.data.userId == request.auth.uid || 
+      allow read: if isAdmin() || isSupervisor() ||
+                    (isAuthenticated() &&
+                     (resource.data.userId == request.auth.uid ||
                       resource.data.entityId == request.auth.uid));
       allow create: if isAdmin();
       allow update, delete: if false;
