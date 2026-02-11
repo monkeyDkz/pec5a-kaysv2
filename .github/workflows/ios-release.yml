@@ -27,14 +27,41 @@ jobs:
 
       - name: Setup Xcode
         run: |
-          if [ -d "/Applications/Xcode_16.1.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
-          elif [ -d "/Applications/Xcode_16.0.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
-          fi
+          for xcode in Xcode_16.2.app Xcode_16.1.app Xcode_16.0.app Xcode_15.4.app; do
+            if [ -d "/Applications/$xcode" ]; then
+              sudo xcode-select -s "/Applications/$xcode/Contents/Developer"
+              echo "Selected $xcode"
+              break
+            fi
+          done
           xcodebuild -version
-          echo "── Available destinations ──"
-          xcodebuild -project GreenDrop.xcodeproj -scheme GreenDrop -showdestinations 2>/dev/null | head -20 || true
+          echo "── Available SDKs ──"
+          xcodebuild -showsdks 2>/dev/null | grep -i simulator || true
+          echo "── Installed runtimes ──"
+          xcrun simctl list runtimes 2>/dev/null || true
+
+      - name: Install iOS Simulator Runtime
+        run: |
+          if xcrun simctl list runtimes 2>/dev/null | grep -q "com.apple.CoreSimulator.SimRuntime.iOS"; then
+            echo "iOS Simulator runtime already installed"
+          else
+            echo "No iOS Simulator runtime found — downloading..."
+            for attempt in 1 2 3; do
+              echo "Attempt $attempt/3..."
+              if xcodebuild -downloadPlatform iOS; then
+                echo "Download succeeded on attempt $attempt"
+                break
+              fi
+              if [ $attempt -eq 3 ]; then
+                echo "::warning::Could not download iOS platform after 3 attempts"
+              fi
+              sleep 15
+            done
+          fi
+          echo "── Runtimes after install ──"
+          xcrun simctl list runtimes 2>/dev/null || true
+          echo "── Available simulator devices ──"
+          xcrun simctl list devices available 2>/dev/null | head -30 || true
 
       - name: Cache Swift packages
         uses: actions/cache@v4
@@ -53,19 +80,33 @@ jobs:
 
       - name: Build for iOS Simulator
         run: |
-          # Use the generic iOS Simulator placeholder — no runtime needed for compiling
-          xcodebuild build \
+          echo "── Attempting build with generic/platform=iOS Simulator ──"
+          if xcodebuild build \
             -project GreenDrop.xcodeproj \
             -scheme GreenDrop \
             -configuration Release \
-            -sdk iphonesimulator \
-            -destination "id=dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder" \
+            -destination "generic/platform=iOS Simulator" \
             -derivedDataPath $RUNNER_TEMP/DerivedData \
             -clonedSourcePackagesDirPath ../../.swiftpm \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            ONLY_ACTIVE_ARCH=NO
+            ONLY_ACTIVE_ARCH=NO; then
+            echo "Build succeeded with generic/platform=iOS Simulator"
+          else
+            echo "── Fallback: build with -sdk iphonesimulator only ──"
+            xcodebuild build \
+              -project GreenDrop.xcodeproj \
+              -scheme GreenDrop \
+              -configuration Release \
+              -sdk iphonesimulator \
+              -derivedDataPath $RUNNER_TEMP/DerivedData \
+              -clonedSourcePackagesDirPath ../../.swiftpm \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY="" \
+              ONLY_ACTIVE_ARCH=NO
+          fi
 
       - name: Package simulator build
         run: |
