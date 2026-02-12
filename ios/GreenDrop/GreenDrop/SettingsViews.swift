@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreLocation
 
 // MARK: - Settings View
 struct SettingsView: View {
@@ -271,6 +272,8 @@ struct AddEditAddressView: View {
     @State private var postalCode = ""
     @State private var instructions = ""
     @State private var selectedLabel = "Maison"
+    @State private var isSaving = false
+    @State private var geocodeError: String?
 
     let labelOptions = ["Maison", "Travail", "Autre"]
 
@@ -304,6 +307,18 @@ struct AddEditAddressView: View {
                 Section("Instructions (optionnel)") {
                     TextField("Ex: Digicode 1234, 3ème étage", text: $instructions)
                 }
+
+                if let error = geocodeError {
+                    Section {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
             }
             .navigationTitle("Nouvelle adresse")
             .navigationBarTitleDisplayMode(.inline)
@@ -312,10 +327,14 @@ struct AddEditAddressView: View {
                     Button("Annuler") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Enregistrer") {
-                        saveAddress()
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Enregistrer") {
+                            saveAddress()
+                        }
+                        .disabled(!isValid)
                     }
-                    .disabled(!isValid)
                 }
             }
         }
@@ -323,15 +342,31 @@ struct AddEditAddressView: View {
 
     func saveAddress() {
         let finalLabel = selectedLabel == "Autre" ? label : selectedLabel
-        let address = addressManager.createAddress(
-            label: finalLabel,
-            street: street,
-            city: city,
-            postalCode: postalCode,
-            instructions: instructions.isEmpty ? nil : instructions
-        )
-        addressManager.addAddress(address)
-        dismiss()
+        let fullAddress = "\(street), \(postalCode) \(city), France"
+        isSaving = true
+        geocodeError = nil
+
+        Task {
+            var coordinate: CLLocationCoordinate2D?
+            do {
+                let result = try await GeocodingService.shared.geocode(fullAddress)
+                coordinate = result.coordinate
+            } catch {
+                geocodeError = "Adresse introuvable. Elle sera enregistrée sans coordonnées GPS."
+            }
+
+            let address = addressManager.createAddress(
+                label: finalLabel,
+                street: street,
+                city: city,
+                postalCode: postalCode,
+                instructions: instructions.isEmpty ? nil : instructions,
+                coordinate: coordinate
+            )
+            addressManager.addAddress(address)
+            isSaving = false
+            dismiss()
+        }
     }
 }
 

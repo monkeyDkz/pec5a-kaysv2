@@ -1,5 +1,7 @@
 import SwiftUI
 import Charts
+import CoreLocation
+import MapKit
 import FirebaseStorage
 
 // MARK: - Merchant Dashboard View
@@ -1122,6 +1124,7 @@ struct ProductImagePicker: UIViewControllerRepresentable {
 struct ShopSettingsView: View {
     @EnvironmentObject var authService: AuthService
     @StateObject private var dataService = DataService.shared
+    @StateObject private var addressCompleter = AddressSearchCompleter()
     @Environment(\.dismiss) private var dismiss
 
     let shopId: String
@@ -1129,6 +1132,9 @@ struct ShopSettingsView: View {
     @State private var shopName = ""
     @State private var shopDescription = ""
     @State private var shopAddress = ""
+    @State private var shopCoordinate: CLLocationCoordinate2D?
+    @State private var isAddressValidated = false
+    @State private var showAddressSearch = false
     @State private var selectedCategory: ShopCategory = .grocery
     @State private var deliveryFee = ""
     @State private var minOrderAmount = ""
@@ -1183,7 +1189,24 @@ struct ShopSettingsView: View {
                 TextField("Nom de la boutique", text: $shopName)
                 TextField("Description", text: $shopDescription, axis: .vertical)
                     .lineLimit(2...5)
-                TextField("Adresse", text: $shopAddress)
+
+                Button(action: { showAddressSearch = true }) {
+                    HStack {
+                        Text(shopAddress.isEmpty ? "Rechercher une adresse" : shopAddress)
+                            .foregroundColor(shopAddress.isEmpty ? .secondary : .primary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Spacer()
+                        if isAddressValidated {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(Color(hex: "#22C55E"))
+                        } else {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
 
                 Picker("Catégorie", selection: $selectedCategory) {
                     ForEach(ShopCategory.allCases, id: \.self) { cat in
@@ -1252,6 +1275,17 @@ struct ShopSettingsView: View {
         .sheet(isPresented: $showImagePicker) {
             ProductImagePicker(image: $selectedImage, sourceType: imageSourceType)
         }
+        .sheet(isPresented: $showAddressSearch) {
+            AddressSearchView(
+                completer: addressCompleter,
+                onAddressSelected: { selectedAddress, coordinate in
+                    shopAddress = selectedAddress
+                    shopCoordinate = coordinate
+                    isAddressValidated = true
+                    showAddressSearch = false
+                }
+            )
+        }
         .alert("Boutique mise à jour", isPresented: $showSuccess) {
             Button("OK") { dismiss() }
         } message: {
@@ -1287,6 +1321,10 @@ struct ShopSettingsView: View {
         existingImageURL = shop.imageURL
         deliveryFee = String(format: "%.2f", shop.deliveryFee)
         minOrderAmount = String(format: "%.2f", shop.minOrderAmount)
+        if !shop.address.isEmpty {
+            shopCoordinate = shop.coordinate
+            isAddressValidated = true
+        }
     }
 
     private func saveShop() {
@@ -1304,7 +1342,7 @@ struct ShopSettingsView: View {
                     }
                 }
 
-                let data: [String: Any] = [
+                var data: [String: Any] = [
                     "name": shopName,
                     "description": shopDescription,
                     "address": shopAddress,
@@ -1313,6 +1351,11 @@ struct ShopSettingsView: View {
                     "deliveryFee": Double(deliveryFee.replacingOccurrences(of: ",", with: ".")) ?? 2.99,
                     "minOrderAmount": Double(minOrderAmount.replacingOccurrences(of: ",", with: ".")) ?? 10.0
                 ]
+
+                if let coordinate = shopCoordinate {
+                    data["latitude"] = coordinate.latitude
+                    data["longitude"] = coordinate.longitude
+                }
 
                 try await dataService.updateShop(shopId: shopId, data: data)
                 showSuccess = true

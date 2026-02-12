@@ -1352,7 +1352,14 @@ struct CheckoutView: View {
     @Environment(\.dismiss) private var dismiss
 
     @StateObject private var paymentService = PaymentService.shared
+    @StateObject private var addressCompleter = AddressSearchCompleter()
+    @StateObject private var locationManager = LocationManager()
     @State private var deliveryAddress = ""
+    @State private var validatedCoordinate: CLLocationCoordinate2D?
+    @State private var isAddressValidated = false
+    @State private var showAddressSearch = false
+    @State private var isGeolocating = false
+    @State private var addressError: String?
     @State private var notes = ""
     @State private var isPlacingOrder = false
     @State private var showAddressSelection = false
@@ -1386,7 +1393,7 @@ struct CheckoutView: View {
     }
 
     var canPlaceOrder: Bool {
-        (selectedAddress != nil || !deliveryAddress.isEmpty) && !isPlacingOrder && !needsAgeVerification
+        (selectedAddress != nil || isAddressValidated) && !isPlacingOrder && !needsAgeVerification
     }
 
     // MARK: - Extracted Subviews
@@ -1395,6 +1402,7 @@ struct CheckoutView: View {
     private var deliveryAddressSection: some View {
         CheckoutSection(title: "Adresse de livraison", icon: "mappin.circle.fill") {
             if let address = selectedAddress {
+                // Saved address selected
                 Button(action: { showAddressSelection = true }) {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
@@ -1417,19 +1425,99 @@ struct CheckoutView: View {
                                 .foregroundColor(.secondary)
                         }
                         Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.secondary)
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(Color(hex: "#22C55E"))
                     }
                     .padding()
                     .background(Color(.systemGray6))
                     .cornerRadius(12)
                 }
                 .buttonStyle(PlainButtonStyle())
+            } else if isAddressValidated {
+                // Validated manual/GPS address
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(deliveryAddress)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text("Adresse validée")
+                            .font(.caption)
+                            .foregroundColor(Color(hex: "#22C55E"))
+                    }
+                    Spacer()
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(Color(hex: "#22C55E"))
+                }
+                .padding()
+                .background(Color(hex: "#22C55E").opacity(0.08))
+                .cornerRadius(12)
+
+                Button(action: {
+                    isAddressValidated = false
+                    validatedCoordinate = nil
+                    deliveryAddress = ""
+                    addressError = nil
+                }) {
+                    HStack {
+                        Image(systemName: "pencil")
+                        Text("Modifier l'adresse")
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(Color(hex: "#22C55E"))
+                }
             } else {
-                TextField("Entrez votre adresse", text: $deliveryAddress)
+                // GPS position button
+                Button(action: { useCurrentLocation() }) {
+                    HStack {
+                        if isGeolocating {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle())
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "location.fill")
+                        }
+                        Text("Utiliser ma position")
+                            .fontWeight(.medium)
+                        Spacer()
+                        Image(systemName: "arrow.right")
+                            .font(.caption)
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color(hex: "#22C55E"))
+                    .cornerRadius(12)
+                }
+                .disabled(isGeolocating)
+
+                // Address search field
+                Button(action: { showAddressSearch = true }) {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                        Text(deliveryAddress.isEmpty ? "Saisir une adresse" : deliveryAddress)
+                            .foregroundColor(deliveryAddress.isEmpty ? .secondary : .primary)
+                        Spacer()
+                        if !deliveryAddress.isEmpty && !isAddressValidated {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.red.opacity(0.6))
+                        }
+                    }
+                    .font(.subheadline)
                     .padding()
                     .background(Color(.systemGray6))
                     .cornerRadius(12)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                if let error = addressError {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                        Text(error)
+                            .font(.caption)
+                    }
+                    .foregroundColor(.red)
+                }
 
                 if !addressManager.addresses.isEmpty {
                     Button(action: { showAddressSelection = true }) {
@@ -1442,6 +1530,41 @@ struct CheckoutView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func useCurrentLocation() {
+        isGeolocating = true
+        addressError = nil
+        locationManager.requestPermission()
+        locationManager.startUpdating()
+
+        Task {
+            // Wait for location with timeout
+            var attempts = 0
+            while locationManager.location == nil && attempts < 20 {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                attempts += 1
+            }
+
+            guard let coordinate = locationManager.location else {
+                isGeolocating = false
+                addressError = "Impossible d'obtenir votre position. Vérifiez vos paramètres de localisation."
+                return
+            }
+
+            locationManager.stopUpdating()
+
+            do {
+                let address = try await GeocodingService.shared.reverseGeocode(coordinate)
+                deliveryAddress = address
+                validatedCoordinate = coordinate
+                isAddressValidated = true
+                addressError = nil
+            } catch {
+                addressError = "Impossible de déterminer l'adresse de votre position."
+            }
+            isGeolocating = false
         }
     }
 
@@ -1712,6 +1835,18 @@ struct CheckoutView: View {
             .sheet(isPresented: $showAddressSelection) {
                 AddressSelectionSheet()
             }
+            .sheet(isPresented: $showAddressSearch) {
+                AddressSearchView(
+                    completer: addressCompleter,
+                    onAddressSelected: { address, coordinate in
+                        deliveryAddress = address
+                        validatedCoordinate = coordinate
+                        isAddressValidated = true
+                        addressError = nil
+                        showAddressSearch = false
+                    }
+                )
+            }
             .sheet(isPresented: $showSchedulePicker) {
                 ScheduleDeliverySheet()
             }
@@ -1794,7 +1929,7 @@ struct CheckoutView: View {
 
     private func createOrderAfterPayment(shopId: String, paymentIntentId: String) async {
         let finalAddress = selectedAddress?.fullAddress ?? deliveryAddress
-        let coordinate = selectedAddress?.coordinate
+        let coordinate = selectedAddress?.coordinate ?? validatedCoordinate
 
         let orderItems = cartManager.cart.items.map { item in
             CreateOrderItem(
@@ -1809,8 +1944,8 @@ struct CheckoutView: View {
             shopId: shopId,
             items: orderItems,
             deliveryAddress: finalAddress,
-            deliveryLatitude: coordinate?.latitude ?? 48.8606,
-            deliveryLongitude: coordinate?.longitude ?? 2.3376,
+            deliveryLatitude: coordinate?.latitude ?? 0,
+            deliveryLongitude: coordinate?.longitude ?? 0,
             notes: notes.isEmpty ? nil : notes
         )
 
@@ -1828,6 +1963,103 @@ struct CheckoutView: View {
             isPlacingOrder = false
             paymentErrorMessage = error.localizedDescription
             showPaymentError = true
+        }
+    }
+}
+
+// MARK: - Address Search View
+struct AddressSearchView: View {
+    @ObservedObject var completer: AddressSearchCompleter
+    var onAddressSelected: (String, CLLocationCoordinate2D) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @FocusState private var isFieldFocused: Bool
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Search field
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    TextField("Rechercher une adresse...", text: $completer.query)
+                        .focused($isFieldFocused)
+                        .autocorrectionDisabled()
+                    if !completer.query.isEmpty {
+                        Button(action: { completer.clear() }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .padding()
+
+                if let error = errorMessage {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                        Text(error)
+                            .font(.caption)
+                    }
+                    .foregroundColor(.red)
+                    .padding(.horizontal)
+                }
+
+                if isLoading {
+                    ProgressView("Validation de l'adresse...")
+                        .padding()
+                }
+
+                // Results list
+                List(completer.results, id: \.self) { result in
+                    Button(action: { selectAddress(result) }) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(result.title)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            if !result.subtitle.isEmpty {
+                                Text(result.subtitle)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .listStyle(.plain)
+            }
+            .navigationTitle("Rechercher une adresse")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") {
+                        completer.clear()
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                isFieldFocused = true
+            }
+        }
+    }
+
+    private func selectAddress(_ result: MKLocalSearchCompletion) {
+        isLoading = true
+        errorMessage = nil
+        Task {
+            do {
+                let (address, coordinate) = try await completer.selectResult(result)
+                completer.clear()
+                onAddressSelected(address, coordinate)
+            } catch {
+                errorMessage = "Impossible de valider cette adresse. Réessayez."
+            }
+            isLoading = false
         }
     }
 }

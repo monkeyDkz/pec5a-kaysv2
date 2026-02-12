@@ -1,5 +1,7 @@
 import SwiftUI
 import SafariServices
+import CoreLocation
+import MapKit
 import FirebaseCore
 import FirebaseCrashlytics
 import GoogleSignIn
@@ -526,6 +528,7 @@ struct ProfileView: View {
 // MARK: - Stripe Onboarding Form View
 struct StripeOnboardingFormView: View {
     @EnvironmentObject var authService: AuthService
+    @StateObject private var addressCompleter = AddressSearchCompleter()
 
     @State private var firstName = ""
     @State private var lastName = ""
@@ -534,6 +537,8 @@ struct StripeOnboardingFormView: View {
     @State private var city = ""
     @State private var postalCode = ""
     @State private var iban = ""
+    @State private var showAddressSearch = false
+    @State private var isAddressValidated = false
 
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -607,14 +612,27 @@ struct StripeOnboardingFormView: View {
                         Text("Adresse")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        TextField("12 rue de la Paix", text: $address)
-                            .textContentType(.streetAddressLine1)
+                        Button(action: { showAddressSearch = true }) {
+                            HStack {
+                                Image(systemName: "magnifyingglass")
+                                    .foregroundColor(.secondary)
+                                Text(address.isEmpty ? "Rechercher une adresse" : address)
+                                    .foregroundColor(address.isEmpty ? .secondary : .primary)
+                                    .lineLimit(1)
+                                Spacer()
+                                if isAddressValidated {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(Color(hex: "#22C55E"))
+                                }
+                            }
                             .padding(12)
                             .background(Color(.systemGray6))
                             .cornerRadius(10)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
 
-                    // City + Postal code
+                    // City + Postal code (auto-filled, editable)
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Ville")
@@ -710,6 +728,25 @@ struct StripeOnboardingFormView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "Une erreur est survenue")
+        }
+        .sheet(isPresented: $showAddressSearch) {
+            AddressSearchView(
+                completer: addressCompleter,
+                onAddressSelected: { selectedAddress, coordinate in
+                    address = selectedAddress
+                    isAddressValidated = true
+                    // Extract city and postal code via reverse geocoding
+                    Task {
+                        let geocoder = CLGeocoder()
+                        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                        if let placemark = try? await geocoder.reverseGeocodeLocation(location).first {
+                            if let foundCity = placemark.locality { city = foundCity }
+                            if let foundPostal = placemark.postalCode { postalCode = foundPostal }
+                        }
+                    }
+                    showAddressSearch = false
+                }
+            )
         }
         .sheet(isPresented: $showStripeSafari) {
             if let url = stripeURL {
@@ -854,10 +891,12 @@ struct ProfileActionRow: View {
 struct EditProfileView: View {
     @EnvironmentObject var authService: AuthService
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var addressCompleter = AddressSearchCompleter()
 
     @State private var name = ""
     @State private var phone = ""
     @State private var address = ""
+    @State private var showAddressSearch = false
 
     var body: some View {
         NavigationStack {
@@ -869,8 +908,21 @@ struct EditProfileView: View {
                 }
 
                 Section("Adresse de livraison") {
-                    TextField("Adresse", text: $address, axis: .vertical)
-                        .lineLimit(2...4)
+                    Button(action: { showAddressSearch = true }) {
+                        HStack {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.secondary)
+                            Text(address.isEmpty ? "Rechercher une adresse" : address)
+                                .foregroundColor(address.isEmpty ? .secondary : .primary)
+                                .multilineTextAlignment(.leading)
+                            Spacer()
+                            if !address.isEmpty {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(Color(hex: "#22C55E"))
+                            }
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
             .navigationTitle("Modifier le profil")
@@ -891,6 +943,15 @@ struct EditProfileView: View {
                 name = authService.userProfile?.name ?? ""
                 phone = authService.userProfile?.phone ?? ""
                 address = authService.userProfile?.address ?? ""
+            }
+            .sheet(isPresented: $showAddressSearch) {
+                AddressSearchView(
+                    completer: addressCompleter,
+                    onAddressSelected: { selectedAddress, _ in
+                        address = selectedAddress
+                        showAddressSearch = false
+                    }
+                )
             }
         }
     }

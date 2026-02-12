@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import CoreLocation
+import MapKit
 import FirebaseCore
 import FirebaseAuth
 import FirebaseFirestore
@@ -2818,5 +2819,118 @@ final class AppSettingsManager: ObservableObject {
         notificationsEnabled = true
         soundEnabled = true
         language = "fr"
+    }
+}
+
+// MARK: - Geocoding Service
+
+final class GeocodingService {
+    static let shared = GeocodingService()
+    private let geocoder = CLGeocoder()
+
+    func reverseGeocode(_ coordinate: CLLocationCoordinate2D) async throws -> String {
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let placemarks = try await geocoder.reverseGeocodeLocation(location)
+        guard let placemark = placemarks.first else {
+            throw GeocodingError.noResults
+        }
+        return formatPlacemark(placemark)
+    }
+
+    func geocode(_ address: String) async throws -> (coordinate: CLLocationCoordinate2D, formattedAddress: String) {
+        let placemarks = try await geocoder.geocodeAddressString(address)
+        guard let placemark = placemarks.first,
+              let location = placemark.location else {
+            throw GeocodingError.noResults
+        }
+        return (location.coordinate, formatPlacemark(placemark))
+    }
+
+    private func formatPlacemark(_ placemark: CLPlacemark) -> String {
+        var parts: [String] = []
+        if let street = placemark.thoroughfare {
+            if let number = placemark.subThoroughfare {
+                parts.append("\(number) \(street)")
+            } else {
+                parts.append(street)
+            }
+        }
+        if let postalCode = placemark.postalCode, let city = placemark.locality {
+            parts.append("\(postalCode) \(city)")
+        } else if let city = placemark.locality {
+            parts.append(city)
+        }
+        if let country = placemark.country {
+            parts.append(country)
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    enum GeocodingError: LocalizedError {
+        case noResults
+
+        var errorDescription: String? {
+            switch self {
+            case .noResults:
+                return "Adresse introuvable. Veuillez vérifier et réessayer."
+            }
+        }
+    }
+}
+
+// MARK: - Address Search Completer
+
+@MainActor
+final class AddressSearchCompleter: NSObject, ObservableObject {
+    @Published var query = "" {
+        didSet {
+            completer.queryFragment = query
+        }
+    }
+    @Published var results: [MKLocalSearchCompletion] = []
+    @Published var isSearching = false
+
+    private let completer = MKLocalSearchCompleter()
+
+    override init() {
+        super.init()
+        completer.delegate = self
+        completer.resultTypes = .address
+        // Focus on France region
+        completer.region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 46.603354, longitude: 1.888334),
+            span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10)
+        )
+    }
+
+    func selectResult(_ result: MKLocalSearchCompletion) async throws -> (address: String, coordinate: CLLocationCoordinate2D) {
+        let request = MKLocalSearch.Request(completion: result)
+        let search = MKLocalSearch(request: request)
+        let response = try await search.start()
+        guard let item = response.mapItems.first else {
+            throw GeocodingService.GeocodingError.noResults
+        }
+        let address = [result.title, result.subtitle].filter { !$0.isEmpty }.joined(separator: ", ")
+        return (address, item.placemark.coordinate)
+    }
+
+    func clear() {
+        query = ""
+        results = []
+    }
+}
+
+extension AddressSearchCompleter: MKLocalSearchCompleterDelegate {
+    nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        Task { @MainActor in
+            self.results = completer.results
+            self.isSearching = false
+        }
+    }
+
+    nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
+        Task { @MainActor in
+            self.isSearching = false
+        }
     }
 }
