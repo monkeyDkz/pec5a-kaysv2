@@ -2,7 +2,7 @@
 
 Application web d'administration pour gérer les livraisons, chauffeurs, commandes et zones légales en temps réel. Développée avec **Next.js 15**, **Firebase**, **TypeScript** et **MapCN**.
 
----
+---test
 
 ## 📋 Prérequis
 
@@ -99,15 +99,15 @@ pnpm seed
 
 Le script créera automatiquement ces comptes :
 
-| Rôle | Email | Mot de passe |
-|------|-------|--------------|
-| **Admin** | admin@greendrop.com | admin123 |
-| Marchand 1 | merchant1@pec5a.com | merchant123 |
-| Marchand 2 | merchant2@pec5a.com | merchant123 |
-| Chauffeur 1 | driver1@pec5a.com | driver123 |
-| Chauffeur 2 | driver2@pec5a.com | driver123 |
-| Client 1 | client1@pec5a.com | client123 |
-| Client 2 | client2@pec5a.com | client123 |
+| Rôle        | Email               | Mot de passe |
+| ----------- | ------------------- | ------------ |
+| **Admin**   | admin@greendrop.com | admin123     |
+| Marchand 1  | merchant1@pec5a.com | merchant123  |
+| Marchand 2  | merchant2@pec5a.com | merchant123  |
+| Chauffeur 1 | driver1@pec5a.com   | driver123    |
+| Chauffeur 2 | driver2@pec5a.com   | driver123    |
+| Client 1    | client1@pec5a.com   | client123    |
+| Client 2    | client2@pec5a.com   | client123    |
 
 ---
 
@@ -240,6 +240,7 @@ pec5a/
 ## 🛠️ Technologies utilisées
 
 ### Frontend
+
 - **Next.js 15** - Framework React avec App Router
 - **TypeScript** - Typage statique
 - **Tailwind CSS** - Framework CSS utility-first
@@ -248,6 +249,7 @@ pec5a/
 - **Recharts** - Graphiques et visualisations
 
 ### Backend
+
 - **Firebase Authentication** - Gestion des utilisateurs
 - **Firestore** - Base de données NoSQL temps réel
 - **Firebase Storage** - Stockage de fichiers
@@ -262,6 +264,7 @@ pec5a/
 L'API REST est construite avec **Next.js API Routes** et déployée gratuitement sur **Vercel**.
 
 **Avantages:**
+
 - ✅ Déploiement gratuit (pas besoin de Firebase Blaze)
 - ✅ HTTPS automatique
 - ✅ Accessible publiquement depuis mobile
@@ -278,20 +281,24 @@ L'API REST est construite avec **Next.js API Routes** et déployée gratuitement
 ### 🔌 Endpoints disponibles
 
 **Commandes:** (`/api/orders`)
+
 - `POST /api/orders` - Créer une nouvelle commande
 - `GET /api/orders/my` - Récupérer mes commandes
 - `GET /api/orders/:id` - Détails d'une commande
 - `PATCH /api/orders/:id` - Mettre à jour le statut
 
 **Boutiques & Produits:** (`/api/shops`)
+
 - `GET /api/shops` - Liste des boutiques (avec filtres géo)
 - `GET /api/shops/:id/products` - Produits d'une boutique
 
 **Chauffeurs:** (`/api/drivers`)
+
 - `POST /api/drivers/location` - Mise à jour position GPS
 - `POST /api/drivers/status` - Changer statut (available/busy/offline)
 
 **Upload & Notifications:**
+
 - `POST /api/upload` - Upload photo de livraison/signature
 - `POST /api/notifications/send` - Envoyer notification push (admin)
 - `PUT /api/notifications/token` - Enregistrer token FCM
@@ -299,6 +306,7 @@ L'API REST est construite avec **Next.js API Routes** et déployée gratuitement
 ### 💻 Configuration Client Mobile
 
 **React Native:**
+
 ```bash
 npm install @react-native-firebase/app @react-native-firebase/auth
 npm install @react-native-firebase/firestore @react-native-firebase/storage
@@ -306,51 +314,53 @@ npm install axios  # Pour les appels REST
 ```
 
 **Flutter:**
+
 ```yaml
 dependencies:
   firebase_core: ^2.24.0
   firebase_auth: ^4.15.0
   cloud_firestore: ^4.13.0
-  http: ^1.1.0  # Pour les appels REST
+  http: ^1.1.0 # Pour les appels REST
 ```
 
 ### 📱 Exemple d'utilisation
 
 **React Native:**
-```javascript
-import auth from '@react-native-firebase/auth';
-import axios from 'axios';
 
-const API_BASE_URL = 'https://votre-projet.vercel.app/api';
+```javascript
+import auth from "@react-native-firebase/auth"
+import axios from "axios"
+
+const API_BASE_URL = "https://votre-projet.vercel.app/api"
 
 // Helper pour les requêtes authentifiées
 async function apiCall(endpoint, options = {}) {
-  const token = await auth().currentUser?.getIdToken();
-  
+  const token = await auth().currentUser?.getIdToken()
+
   return axios({
     url: `${API_BASE_URL}${endpoint}`,
     ...options,
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
       ...options.headers,
     },
-  });
+  })
 }
 
 // Créer une commande
-const response = await apiCall('/orders', {
-  method: 'POST',
+const response = await apiCall("/orders", {
+  method: "POST",
   data: {
-    shopId: 'shop_123',
-    items: [{ productId: 'prod_1', quantity: 2 }],
-    deliveryAddress: '10 Rue de Rivoli, 75001 Paris',
+    shopId: "shop_123",
+    items: [{ productId: "prod_1", quantity: 2 }],
+    deliveryAddress: "10 Rue de Rivoli, 75001 Paris",
     deliveryLocation: { latitude: 48.8566, longitude: 2.3522 },
-    paymentMethod: 'card',
+    paymentMethod: "card",
   },
-});
+})
 
-console.log(response.data.order.reference); // ORD-1737000000
+console.log(response.data.order.reference) // ORD-1737000000
 ```
 
 ### 🚀 Déployer l'API sur Vercel
@@ -358,6 +368,7 @@ console.log(response.data.order.reference); // ORD-1737000000
 Voir le guide complet dans **[DEPLOYMENT.md](./DEPLOYMENT.md)**
 
 **Résumé rapide:**
+
 ```bash
 # 1. Installer Vercel CLI
 npm install -g vercel
@@ -374,9 +385,11 @@ vercel --prod
 Votre API sera accessible sur: `https://votre-projet.vercel.app/api`
 
 ---
+
 - **Firebase Cloud Functions** - API backend pour mobile
 
 ### DevOps
+
 - **pnpm** - Gestionnaire de paquets rapide
 - **tsx** - Exécution TypeScript pour scripts
 
@@ -404,22 +417,27 @@ pnpm add [package]          # Ajouter une dépendance
 ## 🐛 Résolution de problèmes
 
 ### Erreur : "Firebase config not found"
+
 - Vérifiez que `.env.local` existe à la racine
 - Vérifiez que toutes les variables `NEXT_PUBLIC_FIREBASE_*` sont définies
 
 ### Erreur : "Permission denied" lors du seed
+
 - Vérifiez `FIREBASE_CLIENT_EMAIL` et `FIREBASE_PRIVATE_KEY`
 - Assurez-vous que la clé privée a bien les `\n` et les guillemets
 
 ### La carte ne s'affiche pas
+
 - Vérifiez la connexion internet (MapCN utilise des tuiles en ligne)
 - Ouvrez la console (F12) pour voir les erreurs MapLibre
 
 ### Les chauffeurs ne bougent pas en simulation
+
 - Cliquez sur le bouton **"Démo Live"** vert
 - Vérifiez que Firestore n'a pas d'erreurs de permission dans la console
 
 ### Erreur de build TypeScript
+
 ```bash
 # Nettoyer et réinstaller
 rm -rf node_modules .next
@@ -434,11 +452,13 @@ pnpm build
 Le script seed crée automatiquement :
 
 ### Boutiques (Paris)
+
 - **Bio Market Paris** - 45 Boulevard Saint-Germain, 75005
 - **Épicerie du Marais** - 12 Rue des Rosiers, 75004
 - **Délices de Montmartre** - 78 Rue Lepic, 75018
 
 ### Produits français
+
 - Tomates Bio d'Île-de-France (2.5€/kg)
 - Pommes de Normandie (3.2€/kg)
 - Baguette Tradition (1.2€)
@@ -448,6 +468,7 @@ Le script seed crée automatiquement :
 - Eau Minérale Évian (0.9€/bouteille)
 
 ### Chauffeurs
+
 - **Thomas Bernard** - Moto (AB-123-CD) - Position : Paris Centre
 - **Lucas Petit** - Voiture (EF-456-GH) - Position : Paris Nord
 
@@ -476,6 +497,7 @@ Le script seed crée automatiquement :
 ## 📧 Support
 
 Pour toute question sur le projet :
+
 - Consultez la [documentation Firebase](https://firebase.google.com/docs)
 - Consultez la [documentation Next.js](https://nextjs.org/docs)
 - Consultez la [documentation MapCN](https://mapcn.dev)
