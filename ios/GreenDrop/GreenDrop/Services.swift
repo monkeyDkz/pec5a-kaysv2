@@ -1011,7 +1011,7 @@ final class DataService: ObservableObject {
             id: id,
             name: data["name"] as? String ?? "Shop",
             description: data["description"] as? String ?? "",
-            imageURL: data["logoUrl"] as? String,
+            imageURL: data["imageURL"] as? String ?? data["logoUrl"] as? String,
             address: data["address"] as? String ?? "",
             latitude: latitude,
             longitude: longitude,
@@ -1432,7 +1432,7 @@ final class DataService: ObservableObject {
         if let index = shops.firstIndex(where: { $0.id == shopId }) {
             if let name = data["name"] as? String { shops[index].name = name }
             if let description = data["description"] as? String { shops[index].description = description }
-            if let imageURL = data["imageURL"] as? String { shops[index].imageURL = imageURL }
+            if let imageURL = data["imageURL"] as? String ?? data["logoUrl"] as? String { shops[index].imageURL = imageURL }
             if let address = data["address"] as? String { shops[index].address = address }
         }
     }
@@ -1646,7 +1646,7 @@ final class DataService: ObservableObject {
     /// - Parameter product: The `Product` to add. The `id` field is replaced with the generated Firestore ID.
     /// - Throws: A Firestore error if the write fails.
     func addProduct(_ product: Product) async throws {
-        let productData: [String: Any] = [
+        var productData: [String: Any] = [
             "name": product.name,
             "description": product.description,
             "price": product.price,
@@ -1656,6 +1656,9 @@ final class DataService: ObservableObject {
             "stock": product.stock,
             "createdAt": Timestamp(date: Date())
         ]
+        if let imageURL = product.imageURL {
+            productData["imageUrl"] = imageURL
+        }
 
         let docRef = try await db.collection("products").addDocument(data: productData)
         var newProduct = product
@@ -1678,14 +1681,18 @@ final class DataService: ObservableObject {
     /// - Parameter product: The `Product` with updated fields. Matched by `id`.
     /// - Throws: A Firestore error if the update fails.
     func updateProduct(_ product: Product) async throws {
-        try await db.collection("products").document(product.id).updateData([
+        var updateData: [String: Any] = [
             "name": product.name,
             "description": product.description,
             "price": product.price,
             "category": product.category,
             "status": product.isAvailable ? "active" : "inactive",
             "stock": product.stock
-        ])
+        ]
+        if let imageURL = product.imageURL {
+            updateData["imageUrl"] = imageURL
+        }
+        try await db.collection("products").document(product.id).updateData(updateData)
 
         if let index = products.firstIndex(where: { $0.id == product.id }) {
             products[index] = product
