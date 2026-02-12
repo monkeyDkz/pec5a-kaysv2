@@ -11,11 +11,7 @@ struct APIConfig {
     ///
     /// - Note: In `DEBUG` mode, points to the local development server.
     ///   In release builds, points to the Vercel production deployment.
-    #if DEBUG
-    static let baseURL = "http://192.168.1.141:3000/api"
-    #else
     static let baseURL = "https://pec5a-kaysv2-hm7i.vercel.app/api"
-    #endif
 
     /// Default timeout interval for API requests, in seconds.
     static let timeout: TimeInterval = 30
