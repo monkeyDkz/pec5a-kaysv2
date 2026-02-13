@@ -1101,16 +1101,16 @@ struct DeliveryCodeEntryView: View {
     @State private var enteredCode = ""
     @State private var errorMessage: String?
     @State private var isVerifying = false
+    @State private var isWaitingForGPS = true
+    @State private var distanceToClient: Double?
     @FocusState private var isCodeFocused: Bool
 
     /// Maximum distance in meters to consider the driver "at" the client
     private let proximityThreshold: Double = 200
 
     var isNearClient: Bool {
-        guard let driverLocation = locationManager.location else { return false }
-        let clientLocation = CLLocation(latitude: delivery.customerLatitude, longitude: delivery.customerLongitude)
-        let driverCLLocation = CLLocation(latitude: driverLocation.latitude, longitude: driverLocation.longitude)
-        return driverCLLocation.distance(from: clientLocation) <= proximityThreshold
+        guard let distance = distanceToClient else { return false }
+        return distance <= proximityThreshold
     }
 
     var body: some View {
@@ -1136,20 +1136,45 @@ struct DeliveryCodeEntryView: View {
 
                 // GPS proximity indicator
                 HStack(spacing: 12) {
-                    Image(systemName: isNearClient ? "location.fill" : "location.slash.fill")
-                        .foregroundColor(isNearClient ? Color(hex: "#22C55E") : .orange)
+                    if isWaitingForGPS {
+                        ProgressView()
+                            .tint(Color(hex: "#22C55E"))
+                    } else {
+                        Image(systemName: isNearClient ? "location.fill" : "location.slash.fill")
+                            .foregroundColor(isNearClient ? Color(hex: "#22C55E") : .orange)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(isNearClient ? "Position confirmée" : "Vous êtes trop loin du client")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        Text(isNearClient ? "Vous pouvez entrer le code" : "Rapprochez-vous de l'adresse de livraison")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        if isWaitingForGPS {
+                            Text("Localisation en cours...")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text("Recherche de votre position GPS")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else if isNearClient {
+                            Text("Position confirmée")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            if let dist = distanceToClient {
+                                Text("Vous êtes à \(Int(dist))m du client")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        } else {
+                            Text("Vous êtes trop loin du client")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            if let dist = distanceToClient {
+                                Text("Distance: \(Int(dist))m (max \(Int(proximityThreshold))m)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                     }
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(isNearClient ? Color(hex: "#22C55E").opacity(0.1) : Color.orange.opacity(0.1))
+                .background(isWaitingForGPS ? Color.blue.opacity(0.1) : (isNearClient ? Color(hex: "#22C55E").opacity(0.1) : Color.orange.opacity(0.1)))
                 .cornerRadius(12)
                 .padding(.horizontal)
 
@@ -1161,7 +1186,6 @@ struct DeliveryCodeEntryView: View {
                         .keyboardType(.numberPad)
                         .focused($isCodeFocused)
                         .onChange(of: enteredCode) { _, newValue in
-                            // Limit to 4 digits
                             let filtered = String(newValue.prefix(4).filter { $0.isNumber })
                             if filtered != newValue {
                                 enteredCode = filtered
@@ -1214,6 +1238,13 @@ struct DeliveryCodeEntryView: View {
                 locationManager.requestPermission()
                 locationManager.startUpdating()
                 isCodeFocused = true
+            }
+            .onReceive(locationManager.$location) { newLocation in
+                guard let loc = newLocation else { return }
+                isWaitingForGPS = false
+                let driverCL = CLLocation(latitude: loc.latitude, longitude: loc.longitude)
+                let clientCL = CLLocation(latitude: delivery.customerLatitude, longitude: delivery.customerLongitude)
+                distanceToClient = driverCL.distance(from: clientCL)
             }
         }
     }

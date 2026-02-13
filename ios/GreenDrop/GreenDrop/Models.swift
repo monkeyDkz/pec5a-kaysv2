@@ -287,8 +287,10 @@ enum OrderStatus: String, Codable, CaseIterable {
     case preparing = "preparing"
     /// Order is ready for pickup by a driver.
     case ready = "ready"
+    /// Driver has arrived at the shop.
+    case atShop = "atShop"
     /// Driver has picked up the order from the shop.
-    case pickedUp = "picked_up"
+    case pickedUp = "pickedUp"
     /// Driver is en route to the delivery address.
     case delivering = "delivering"
     /// Order has been delivered to the customer.
@@ -312,6 +314,7 @@ enum OrderStatus: String, Codable, CaseIterable {
         case .confirmed: return "Confirmée"
         case .preparing: return "En préparation"
         case .ready: return "Prête"
+        case .atShop: return "Livreur au magasin"
         case .pickedUp: return "Récupérée"
         case .delivering, .inTransit: return "En livraison"
         case .delivered: return "Livrée"
@@ -327,6 +330,7 @@ enum OrderStatus: String, Codable, CaseIterable {
         case .confirmed: return "checkmark.circle.fill"
         case .preparing: return "flame.fill"
         case .ready: return "bag.fill.badge.checkmark"
+        case .atShop: return "storefront.fill"
         case .pickedUp: return "car.fill"
         case .delivering, .inTransit: return "bicycle"
         case .delivered: return "checkmark.seal.fill"
@@ -342,6 +346,7 @@ enum OrderStatus: String, Codable, CaseIterable {
         case .confirmed: return "#3B82F6"
         case .preparing: return "#F97316"
         case .ready: return "#8B5CF6"
+        case .atShop: return "#8B5CF6"
         case .pickedUp: return "#06B6D4"
         case .delivering, .inTransit: return "#22C55E"
         case .delivered: return "#10B981"
@@ -367,6 +372,7 @@ enum OrderStatus: String, Codable, CaseIterable {
         case .confirmed: return 0.3
         case .preparing: return 0.5
         case .ready: return 0.6
+        case .atShop: return 0.65
         case .pickedUp: return 0.7
         case .delivering, .inTransit: return 0.85
         case .delivered: return 1.0
@@ -380,7 +386,7 @@ enum OrderStatus: String, Codable, CaseIterable {
         case .pending, .created, .paid: return 1
         case .confirmed: return 2
         case .preparing: return 3
-        case .ready, .pickedUp: return 4
+        case .ready, .atShop, .pickedUp: return 4
         case .delivering, .inTransit, .delivered: return 5
         case .cancelled: return 0
         }

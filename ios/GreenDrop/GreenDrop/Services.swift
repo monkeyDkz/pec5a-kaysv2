@@ -836,10 +836,12 @@ final class DataService: ObservableObject {
                         activeDelivery.driverId = driverId
                         // Map order status to delivery status
                         switch statusString {
-                        case "delivering":
-                            activeDelivery.status = .delivering
+                        case "atShop":
+                            activeDelivery.status = .atShop
                         case "pickedUp":
                             activeDelivery.status = .pickedUp
+                        case "delivering":
+                            activeDelivery.status = .delivering
                         default:
                             activeDelivery.status = .accepted
                         }
@@ -1730,15 +1732,32 @@ final class DataService: ObservableObject {
                 deliveries[index].deliveredAt = Date()
             }
 
+            // Sync status to Firestore order
+            let orderStatusMap: [DeliveryStatus: String] = [
+                .atShop: "atShop",
+                .pickedUp: "pickedUp",
+                .delivering: "delivering",
+                .delivered: "delivered"
+            ]
+            if let orderStatus = orderStatusMap[status] {
+                do {
+                    try await db.collection("orders").document(deliveries[index].orderId).updateData([
+                        "status": orderStatus,
+                        "updatedAt": Timestamp(date: Date())
+                    ])
+                } catch {}
+            }
+
+            // Also update local orders cache
             switch status {
-            case .available, .accepted, .atShop:
-                break  // No order status change — order stays at current status
             case .pickedUp:
                 await updateOrderStatus(deliveries[index].orderId, status: .pickedUp)
             case .delivering:
                 await updateOrderStatus(deliveries[index].orderId, status: .delivering)
             case .delivered:
                 await updateOrderStatus(deliveries[index].orderId, status: .delivered)
+            default:
+                break
             }
         }
     }

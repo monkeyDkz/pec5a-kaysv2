@@ -13,8 +13,6 @@ struct SettingsView: View {
     @State private var showLegal = false
     @State private var showSupport = false
     @State private var showDeleteAccount = false
-    @State private var selectedPhotoItem: PhotosPickerItem?
-    @State private var isUploadingAvatar = false
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
@@ -22,50 +20,40 @@ struct SettingsView: View {
             List {
                 // Profile Section
                 Section {
-                    HStack(spacing: 16) {
-                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                            ZStack(alignment: .bottomTrailing) {
-                                if let avatar = authService.userProfile?.avatar, let url = URL(string: avatar) {
-                                    AsyncImage(url: url) { phase in
-                                        switch phase {
-                                        case .success(let image):
-                                            image.resizable().aspectRatio(contentMode: .fill)
-                                        default:
-                                            profilePlaceholder
-                                        }
+                    NavigationLink(destination: EditProfileView()) {
+                        HStack(spacing: 16) {
+                            if let avatar = authService.userProfile?.avatar, let url = URL(string: avatar) {
+                                AsyncImage(url: url) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image.resizable().aspectRatio(contentMode: .fill)
+                                    default:
+                                        profilePlaceholder
                                     }
-                                    .frame(width: 64, height: 64)
-                                    .clipShape(Circle())
-                                } else {
-                                    profilePlaceholder
                                 }
-
-                                Image(systemName: "camera.circle.fill")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(Color(hex: "#22C55E"))
-                                    .background(Color(.systemBackground).clipShape(Circle()))
+                                .frame(width: 64, height: 64)
+                                .clipShape(Circle())
+                            } else {
+                                profilePlaceholder
                             }
-                        }
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(authService.userProfile?.name ?? "Utilisateur")
-                                .font(.headline)
-                            Text(authService.userProfile?.email ?? "")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(authService.userProfile?.name ?? "Utilisateur")
+                                    .font(.headline)
+                                Text(authService.userProfile?.email ?? "")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                if let phone = authService.userProfile?.phone, !phone.isEmpty {
+                                    Text(phone)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
 
-                        Spacer()
-
-                        if isUploadingAvatar {
-                            ProgressView()
+                            Spacer()
                         }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
-                }
-                .onChange(of: selectedPhotoItem) { _, newItem in
-                    guard let item = newItem else { return }
-                    uploadAvatar(item: item)
                 }
 
                 // Account Section
@@ -187,24 +175,6 @@ struct SettingsView: View {
         }
     }
 
-    func uploadAvatar(item: PhotosPickerItem) {
-        isUploadingAvatar = true
-        Task {
-            guard let data = try? await item.loadTransferable(type: Data.self),
-                  let userId = authService.userProfile?.id else {
-                isUploadingAvatar = false
-                return
-            }
-
-            let storageRef = Storage.storage().reference().child("avatars/\(userId).jpg")
-            _ = try? await storageRef.putDataAsync(data)
-            if let url = try? await storageRef.downloadURL() {
-                authService.updateAvatar(url.absoluteString)
-            }
-            isUploadingAvatar = false
-        }
-    }
-
     func deleteAccount() {
         // In production, this would call the backend to delete the account
         Task {
@@ -225,6 +195,172 @@ struct SettingsRow: View {
                 .frame(width: 24)
             Text(title)
         }
+    }
+}
+
+// MARK: - Edit Profile View
+struct EditProfileView: View {
+    @EnvironmentObject var authService: AuthService
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name = ""
+    @State private var phone = ""
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var isUploadingAvatar = false
+    @State private var isSaving = false
+    @State private var showSuccess = false
+
+    var body: some View {
+        Form {
+            // Avatar section
+            Section {
+                HStack {
+                    Spacer()
+                    PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                        ZStack(alignment: .bottomTrailing) {
+                            if isUploadingAvatar {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color(.systemGray5))
+                                        .frame(width: 100, height: 100)
+                                    ProgressView()
+                                        .tint(Color(hex: "#22C55E"))
+                                }
+                            } else if let avatar = authService.userProfile?.avatar, let url = URL(string: avatar) {
+                                AsyncImage(url: url) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image.resizable().aspectRatio(contentMode: .fill)
+                                    default:
+                                        avatarPlaceholder
+                                    }
+                                }
+                                .frame(width: 100, height: 100)
+                                .clipShape(Circle())
+                            } else {
+                                avatarPlaceholder
+                            }
+
+                            Circle()
+                                .fill(Color(hex: "#22C55E"))
+                                .frame(width: 30, height: 30)
+                                .overlay(
+                                    Image(systemName: "camera.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white)
+                                )
+                        }
+                    }
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+            }
+            .onChange(of: selectedPhotoItem) { _, newItem in
+                guard let item = newItem else { return }
+                uploadAvatar(item: item)
+            }
+
+            // Personal info
+            Section("Informations personnelles") {
+                HStack {
+                    Image(systemName: "person.fill")
+                        .foregroundColor(Color(hex: "#22C55E"))
+                        .frame(width: 24)
+                    TextField("Nom complet", text: $name)
+                }
+
+                HStack {
+                    Image(systemName: "phone.fill")
+                        .foregroundColor(Color(hex: "#22C55E"))
+                        .frame(width: 24)
+                    TextField("Numéro de téléphone", text: $phone)
+                        .keyboardType(.phonePad)
+                }
+            }
+
+            // Email (read-only)
+            Section("Email") {
+                HStack {
+                    Image(systemName: "envelope.fill")
+                        .foregroundColor(.secondary)
+                        .frame(width: 24)
+                    Text(authService.userProfile?.email ?? "")
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            // Save
+            Section {
+                Button(action: saveProfile) {
+                    HStack {
+                        Spacer()
+                        if isSaving {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Text("Enregistrer les modifications")
+                                .fontWeight(.semibold)
+                        }
+                        Spacer()
+                    }
+                    .foregroundColor(.white)
+                    .padding(.vertical, 8)
+                    .background(Color(hex: "#22C55E"))
+                    .cornerRadius(10)
+                }
+                .disabled(isSaving || name.isEmpty)
+                .listRowBackground(Color.clear)
+            }
+        }
+        .navigationTitle("Mon profil")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            name = authService.userProfile?.name ?? ""
+            phone = authService.userProfile?.phone ?? ""
+        }
+        .alert("Profil mis à jour", isPresented: $showSuccess) {
+            Button("OK") { dismiss() }
+        } message: {
+            Text("Vos informations ont été enregistrées.")
+        }
+    }
+
+    private var avatarPlaceholder: some View {
+        ZStack {
+            Circle()
+                .fill(Color(hex: "#22C55E").opacity(0.15))
+                .frame(width: 100, height: 100)
+            Text(String((authService.userProfile?.name ?? "U").prefix(1)).uppercased())
+                .font(.system(size: 40, weight: .bold))
+                .foregroundColor(Color(hex: "#22C55E"))
+        }
+    }
+
+    private func uploadAvatar(item: PhotosPickerItem) {
+        isUploadingAvatar = true
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data),
+                  let jpegData = image.jpegData(compressionQuality: 0.7),
+                  let userId = authService.userProfile?.id else {
+                isUploadingAvatar = false
+                return
+            }
+
+            let storageRef = Storage.storage().reference().child("avatars/\(userId).jpg")
+            _ = try? await storageRef.putDataAsync(jpegData)
+            if let url = try? await storageRef.downloadURL() {
+                authService.updateAvatar(url.absoluteString)
+            }
+            isUploadingAvatar = false
+        }
+    }
+
+    private func saveProfile() {
+        isSaving = true
+        authService.updateProfile(name: name, phone: phone, address: authService.userProfile?.address ?? "")
+        isSaving = false
+        showSuccess = true
     }
 }
 
