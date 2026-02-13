@@ -1,5 +1,8 @@
 import SwiftUI
 import CoreLocation
+import PhotosUI
+import FirebaseFirestore
+import FirebaseStorage
 
 // MARK: - Settings View
 struct SettingsView: View {
@@ -9,11 +12,61 @@ struct SettingsView: View {
     @State private var showLegal = false
     @State private var showSupport = false
     @State private var showDeleteAccount = false
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var isUploadingAvatar = false
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
         NavigationStack {
             List {
+                // Profile Section
+                Section {
+                    HStack(spacing: 16) {
+                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                            ZStack(alignment: .bottomTrailing) {
+                                if let avatar = authService.userProfile?.avatar, let url = URL(string: avatar) {
+                                    AsyncImage(url: url) { phase in
+                                        switch phase {
+                                        case .success(let image):
+                                            image.resizable().aspectRatio(contentMode: .fill)
+                                        default:
+                                            profilePlaceholder
+                                        }
+                                    }
+                                    .frame(width: 64, height: 64)
+                                    .clipShape(Circle())
+                                } else {
+                                    profilePlaceholder
+                                }
+
+                                Image(systemName: "camera.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(Color(hex: "#22C55E"))
+                                    .background(Color(.systemBackground).clipShape(Circle()))
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(authService.userProfile?.name ?? "Utilisateur")
+                                .font(.headline)
+                            Text(authService.userProfile?.email ?? "")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Spacer()
+
+                        if isUploadingAvatar {
+                            ProgressView()
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .onChange(of: selectedPhotoItem) { _, newItem in
+                    guard let item = newItem else { return }
+                    uploadAvatar(item: item)
+                }
+
                 // Account Section
                 Section("Compte") {
                     NavigationLink(destination: AddressesListView()) {
@@ -118,6 +171,36 @@ struct SettingsView: View {
             } message: {
                 Text("Cette action est irréversible. Toutes vos données seront supprimées.")
             }
+        }
+    }
+
+    var profilePlaceholder: some View {
+        ZStack {
+            Circle()
+                .fill(Color(hex: "#22C55E").opacity(0.15))
+                .frame(width: 64, height: 64)
+            Text(String((authService.userProfile?.name ?? "U").prefix(1)).uppercased())
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundColor(Color(hex: "#22C55E"))
+        }
+    }
+
+    func uploadAvatar(item: PhotosPickerItem) {
+        isUploadingAvatar = true
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let userId = authService.userProfile?.id else {
+                isUploadingAvatar = false
+                return
+            }
+
+            let storageRef = Storage.storage().reference().child("avatars/\(userId).jpg")
+            _ = try? await storageRef.putDataAsync(data)
+            if let url = try? await storageRef.downloadURL() {
+                authService.updateAvatar(url.absoluteString)
+            }
+            isUploadingAvatar = false
         }
     }
 

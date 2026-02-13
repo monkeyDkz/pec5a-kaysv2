@@ -130,6 +130,7 @@ final class AuthService: ObservableObject {
             address: nil,
             shopId: nil,
             stripeAccountId: nil,
+            avatar: nil,
             createdAt: Date()
         )
 
@@ -148,6 +149,7 @@ final class AuthService: ObservableObject {
                     address: data["address"] as? String,
                     shopId: data["shopId"] as? String,
                     stripeAccountId: data["stripeAccountId"] as? String,
+                    avatar: data["avatar"] as? String,
                     createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                 )
             } else {
@@ -193,6 +195,7 @@ final class AuthService: ObservableObject {
                 address: nil,
                 shopId: nil,
                 stripeAccountId: nil,
+                avatar: nil,
                 createdAt: Date()
             )
             isLoading = false
@@ -373,6 +376,7 @@ final class AuthService: ObservableObject {
                 address: nil,
                 shopId: shopId,
                 stripeAccountId: nil,
+                avatar: nil,
                 createdAt: Date()
             )
 
@@ -417,6 +421,7 @@ final class AuthService: ObservableObject {
                 address: nil,
                 shopId: nil,
                 stripeAccountId: nil,
+                avatar: nil,
                 createdAt: Date()
             )
             isLoading = false
@@ -503,6 +508,7 @@ final class AuthService: ObservableObject {
                 address: nil,
                 shopId: shopId,
                 stripeAccountId: nil,
+                avatar: nil,
                 createdAt: Date()
             )
 
@@ -551,6 +557,19 @@ final class AuthService: ObservableObject {
                 "name": name,
                 "phone": phone,
                 "address": address
+            ])
+        }
+    }
+
+    /// Updates the user's avatar URL locally and persists to Firestore.
+    func updateAvatar(_ avatarURL: String) {
+        guard var profile = userProfile else { return }
+        profile.avatar = avatarURL
+        userProfile = profile
+
+        Task {
+            try? await db.collection("users").document(profile.id).updateData([
+                "avatar": avatarURL
             ])
         }
     }
@@ -615,6 +634,8 @@ struct UserProfile: Equatable {
     var shopId: String?
     /// The user's Stripe Connect account ID, if onboarded.
     var stripeAccountId: String?
+    /// Optional URL string for the user's profile avatar.
+    var avatar: String?
     /// Timestamp when the user account was created.
     var createdAt: Date?
 }
@@ -991,22 +1012,9 @@ final class DataService: ObservableObject {
             longitude = location["longitude"] as? Double ?? location["lng"] as? Double ?? 2.3522
         }
 
-        // Parse category - support both single string and array format
-        var categoryString = data["category"] as? String ?? "other"
-        if categoryString == "other", let categories = data["categories"] as? [String], let first = categories.first {
-            // Map French category names to ShopCategory rawValues
-            let lowerFirst = first.lowercased()
-            if lowerFirst.contains("bio") || lowerFirst.contains("légumes") || lowerFirst.contains("fruits") || lowerFirst.contains("épicerie") {
-                categoryString = "grocery"
-            } else if lowerFirst.contains("boulangerie") || lowerFirst.contains("pâtisserie") {
-                categoryString = "bakery"
-            } else if lowerFirst.contains("pharmacie") {
-                categoryString = "pharmacy"
-            } else if lowerFirst.contains("fleur") {
-                categoryString = "flowers"
-            }
-        }
-        let category = ShopCategory(rawValue: categoryString) ?? .other
+        // Parse category
+        let categoryString = data["category"] as? String ?? "cbd"
+        let category = ShopCategory(rawValue: categoryString) ?? .cbd
 
         return Shop(
             id: id,
@@ -1254,7 +1262,8 @@ final class DataService: ObservableObject {
             estimatedDelivery: estimatedDelivery,
             notes: data["notes"] as? String,
             paymentStatus: data["paymentStatus"] as? String,
-            paymentIntentId: data["paymentIntentId"] as? String
+            paymentIntentId: data["paymentIntentId"] as? String,
+            deliveryCode: data["deliveryCode"] as? String
         )
     }
 
@@ -1281,6 +1290,7 @@ final class DataService: ObservableObject {
         let deliveryFee = shop?.deliveryFee ?? 2.99
         let total = subtotal + deliveryFee
         let reference = "ORD-\(Int(Date().timeIntervalSince1970))"
+        let deliveryCode = String(format: "%04d", Int.random(in: 0...9999))
 
         let orderData: [String: Any] = [
             "userId": userId,
@@ -1308,6 +1318,7 @@ final class DataService: ObservableObject {
             "paymentMethod": paymentIntentId != nil ? "card" : "cash",
             "paymentStatus": paymentIntentId != nil ? "paid" : "pending",
             "paymentIntentId": paymentIntentId ?? NSNull(),
+            "deliveryCode": deliveryCode,
             "createdAt": Timestamp(date: Date()),
             "updatedAt": Timestamp(date: Date()),
             "estimatedDeliveryTime": Timestamp(date: Date().addingTimeInterval(30 * 60))
@@ -1334,7 +1345,8 @@ final class DataService: ObservableObject {
             estimatedDelivery: Date().addingTimeInterval(30 * 60),
             notes: orderRequest.notes,
             paymentStatus: paymentIntentId != nil ? "paid" : "pending",
-            paymentIntentId: paymentIntentId
+            paymentIntentId: paymentIntentId,
+            deliveryCode: deliveryCode
         )
 
         orders.insert(order, at: 0)
@@ -1373,7 +1385,8 @@ final class DataService: ObservableObject {
                     estimatedDelivery: orders[index].estimatedDelivery,
                     notes: orders[index].notes,
                     paymentStatus: orders[index].paymentStatus,
-                    paymentIntentId: orders[index].paymentIntentId
+                    paymentIntentId: orders[index].paymentIntentId,
+                    deliveryCode: orders[index].deliveryCode
                 )
             }
         } catch {
@@ -1979,15 +1992,15 @@ struct DemoData {
     static let shops: [Shop] = [
         Shop(
             id: "shop1",
-            name: "Bio Market Paris",
-            description: "Produits bio et locaux de qualité",
-            imageURL: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=400",
-            address: "15 Rue de la Paix, 75002 Paris",
-            latitude: 48.8698,
-            longitude: 2.3311,
-            category: .grocery,
+            name: "GreenLeaf Paris",
+            description: "CBD premium au coeur du 1er arrondissement",
+            imageURL: "https://images.unsplash.com/photo-1616690710400-a16d146927c5?w=400",
+            address: "15 Rue de Rivoli, 75001 Paris",
+            latitude: 48.8566,
+            longitude: 2.3425,
+            category: .cbd,
             rating: 4.8,
-            reviewCount: 124,
+            reviewCount: 312,
             isOpen: true,
             deliveryFee: 2.99,
             minOrderAmount: 15.0,
@@ -1996,15 +2009,15 @@ struct DemoData {
         ),
         Shop(
             id: "shop2",
-            name: "Le Petit Boulanger",
-            description: "Boulangerie artisanale traditionnelle",
-            imageURL: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400",
-            address: "42 Avenue des Champs-Élysées, 75008 Paris",
-            latitude: 48.8714,
-            longitude: 2.3033,
-            category: .bakery,
-            rating: 4.9,
-            reviewCount: 89,
+            name: "Le Chanvre Dore",
+            description: "Boutique artisanale CBD dans le Marais",
+            imageURL: "https://images.unsplash.com/photo-1603909223429-69bb7101f420?w=400",
+            address: "28 Rue des Francs-Bourgeois, 75004 Paris",
+            latitude: 48.8574,
+            longitude: 2.3602,
+            category: .cbd,
+            rating: 4.6,
+            reviewCount: 245,
             isOpen: true,
             deliveryFee: 1.99,
             minOrderAmount: 10.0,
@@ -2013,36 +2026,36 @@ struct DemoData {
         ),
         Shop(
             id: "shop3",
-            name: "Pharmacie Centrale",
-            description: "Pharmacie de garde 24h/24",
-            imageURL: "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=400",
-            address: "8 Boulevard Haussmann, 75009 Paris",
-            latitude: 48.8738,
-            longitude: 2.3323,
-            category: .pharmacy,
-            rating: 4.6,
-            reviewCount: 56,
+            name: "CBD Factory Bastille",
+            description: "Le plus grand choix de CBD a Bastille",
+            imageURL: "https://images.unsplash.com/photo-1556928045-16f7f50be0f3?w=400",
+            address: "45 Rue de la Roquette, 75011 Paris",
+            latitude: 48.8534,
+            longitude: 2.3742,
+            category: .cbd,
+            rating: 4.5,
+            reviewCount: 189,
             isOpen: true,
-            deliveryFee: 3.99,
-            minOrderAmount: 20.0,
-            estimatedDeliveryTime: "25-35 min",
+            deliveryFee: 2.49,
+            minOrderAmount: 12.0,
+            estimatedDeliveryTime: "20-35 min",
             ownerId: "merchant3"
         ),
         Shop(
             id: "shop4",
-            name: "Fleurs & Nature",
-            description: "Fleuriste éco-responsable",
-            imageURL: "https://images.unsplash.com/photo-1487530811176-3780de880c2d?w=400",
-            address: "23 Rue du Faubourg Saint-Honoré, 75008 Paris",
-            latitude: 48.8704,
-            longitude: 2.3145,
-            category: .flowers,
+            name: "Herbal House Montmartre",
+            description: "CBD bio et bien-etre a Montmartre",
+            imageURL: "https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=400",
+            address: "52 Rue Lepic, 75018 Paris",
+            latitude: 48.8853,
+            longitude: 2.3340,
+            category: .cbd,
             rating: 4.7,
-            reviewCount: 42,
+            reviewCount: 156,
             isOpen: true,
-            deliveryFee: 4.99,
-            minOrderAmount: 25.0,
-            estimatedDeliveryTime: "30-45 min",
+            deliveryFee: 2.99,
+            minOrderAmount: 15.0,
+            estimatedDeliveryTime: "25-35 min",
             ownerId: "merchant4"
         )
     ]
@@ -2443,6 +2456,7 @@ final class AddressManager: ObservableObject {
 
     private let userDefaultsKey = "savedAddresses"
     private let selectedAddressKey = "selectedAddressId"
+    private let db = Firestore.firestore()
 
     struct SavedAddress: Identifiable, Codable, Equatable {
         let id: String
@@ -2464,6 +2478,24 @@ final class AddressManager: ObservableObject {
         static func == (lhs: SavedAddress, rhs: SavedAddress) -> Bool {
             lhs.id == rhs.id
         }
+
+        var firestoreData: [String: Any] {
+            var data: [String: Any] = [
+                "label": label,
+                "fullAddress": fullAddress,
+                "street": street,
+                "city": city,
+                "postalCode": postalCode,
+                "country": country,
+                "latitude": latitude,
+                "longitude": longitude,
+                "isDefault": isDefault
+            ]
+            if let instructions = instructions {
+                data["instructions"] = instructions
+            }
+            return data
+        }
     }
 
     private init() {
@@ -2479,6 +2511,50 @@ final class AddressManager: ObservableObject {
             return addresses.first { $0.id == id }
         }
         return defaultAddress
+    }
+
+    /// Loads addresses from Firestore and merges with local cache.
+    func syncFromFirestore() async {
+        guard let userId = AuthService.shared.userProfile?.id else { return }
+
+        do {
+            let snapshot = try await db.collection("users").document(userId)
+                .collection("addresses").getDocuments()
+
+            var remoteAddresses: [SavedAddress] = []
+            for doc in snapshot.documents {
+                let data = doc.data()
+                let address = SavedAddress(
+                    id: doc.documentID,
+                    label: data["label"] as? String ?? "",
+                    fullAddress: data["fullAddress"] as? String ?? "",
+                    street: data["street"] as? String ?? "",
+                    city: data["city"] as? String ?? "",
+                    postalCode: data["postalCode"] as? String ?? "",
+                    country: data["country"] as? String ?? "France",
+                    latitude: data["latitude"] as? Double ?? 48.8566,
+                    longitude: data["longitude"] as? Double ?? 2.3522,
+                    isDefault: data["isDefault"] as? Bool ?? false,
+                    instructions: data["instructions"] as? String
+                )
+                remoteAddresses.append(address)
+            }
+
+            // Merge: remote takes priority, add local-only addresses
+            let remoteIds = Set(remoteAddresses.map { $0.id })
+            let localOnly = addresses.filter { !remoteIds.contains($0.id) }
+            addresses = remoteAddresses + localOnly
+
+            // Upload local-only addresses to Firestore
+            for addr in localOnly {
+                try? await db.collection("users").document(userId)
+                    .collection("addresses").document(addr.id).setData(addr.firestoreData)
+            }
+
+            saveToUserDefaults()
+        } catch {
+            // Keep local data on error
+        }
     }
 
     func addAddress(_ address: SavedAddress) {
@@ -2501,12 +2577,14 @@ final class AddressManager: ObservableObject {
         }
         addresses.append(newAddress)
         saveAddresses()
+        syncAddressToFirestore(newAddress)
     }
 
     func updateAddress(_ address: SavedAddress) {
         if let index = addresses.firstIndex(where: { $0.id == address.id }) {
             addresses[index] = address
             saveAddresses()
+            syncAddressToFirestore(address)
         }
     }
 
@@ -2516,6 +2594,7 @@ final class AddressManager: ObservableObject {
             selectedAddressId = defaultAddress?.id
         }
         saveAddresses()
+        deleteAddressFromFirestore(id)
     }
 
     func setDefault(id: String) {
@@ -2535,6 +2614,7 @@ final class AddressManager: ObservableObject {
             )
         }
         saveAddresses()
+        syncAllAddressesToFirestore()
     }
 
     func selectAddress(id: String) {
@@ -2542,7 +2622,13 @@ final class AddressManager: ObservableObject {
         UserDefaults.standard.set(id, forKey: selectedAddressKey)
     }
 
+    // MARK: - Local persistence (UserDefaults cache)
+
     private func saveAddresses() {
+        saveToUserDefaults()
+    }
+
+    private func saveToUserDefaults() {
         if let encoded = try? JSONEncoder().encode(addresses) {
             UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
         }
@@ -2554,6 +2640,39 @@ final class AddressManager: ObservableObject {
             addresses = decoded
         }
         selectedAddressId = UserDefaults.standard.string(forKey: selectedAddressKey)
+
+        // Sync from Firestore in background
+        Task {
+            await syncFromFirestore()
+        }
+    }
+
+    // MARK: - Firestore sync
+
+    private func syncAddressToFirestore(_ address: SavedAddress) {
+        guard let userId = AuthService.shared.userProfile?.id else { return }
+        Task {
+            try? await db.collection("users").document(userId)
+                .collection("addresses").document(address.id).setData(address.firestoreData)
+        }
+    }
+
+    private func deleteAddressFromFirestore(_ addressId: String) {
+        guard let userId = AuthService.shared.userProfile?.id else { return }
+        Task {
+            try? await db.collection("users").document(userId)
+                .collection("addresses").document(addressId).delete()
+        }
+    }
+
+    private func syncAllAddressesToFirestore() {
+        guard let userId = AuthService.shared.userProfile?.id else { return }
+        Task {
+            for address in addresses {
+                try? await db.collection("users").document(userId)
+                    .collection("addresses").document(address.id).setData(address.firestoreData)
+            }
+        }
     }
 
     // Create address from components

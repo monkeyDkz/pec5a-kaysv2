@@ -1,5 +1,7 @@
 import SwiftUI
 import MapKit
+import CoreLocation
+import FirebaseFirestore
 
 // MARK: - Driver Dashboard View
 struct DriverDashboardView: View {
@@ -647,6 +649,7 @@ struct ActiveDeliveryCard: View {
     @State private var eta: String? = nil
     @State private var showDeliveryProof = false
     @State private var showChat = false
+    @State private var showDeliverySuccess = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -758,7 +761,7 @@ struct ActiveDeliveryCard: View {
                         .fontWeight(.medium)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(Color(hex: "#3B82F6"))
+                        .background(delivery.status == .delivering ? Color(hex: "#22C55E") : Color(hex: "#3B82F6"))
                         .foregroundColor(.white)
                         .cornerRadius(10)
                 }
@@ -772,12 +775,17 @@ struct ActiveDeliveryCard: View {
             DriverFullMapView(delivery: $deliveryForMap)
         }
         .sheet(isPresented: $showDeliveryProof) {
-            DeliveryProofView(delivery: delivery) {
+            DeliveryCodeEntryView(delivery: delivery) {
                 completeDeliveryWithProof()
             }
         }
         .fullScreenCover(isPresented: $showChat) {
             DeliveryChatView(delivery: delivery)
+        }
+        .alert("Livraison terminée !", isPresented: $showDeliverySuccess) {
+            Button("OK") {}
+        } message: {
+            Text("La commande a été livrée avec succès. Gains: +\(String(format: "%.2f €", delivery.earnings))")
         }
         .onAppear {
             deliveryForMap = delivery
@@ -833,6 +841,7 @@ struct ActiveDeliveryCard: View {
     func completeDeliveryWithProof() {
         Task {
             await dataService.updateDeliveryStatus(delivery.id, status: .delivered)
+            showDeliverySuccess = true
         }
     }
 }
@@ -1078,5 +1087,172 @@ struct CompletedDeliveryCard: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.03), radius: 8, x: 0, y: 2)
+    }
+}
+
+// MARK: - Delivery Code Entry View
+struct DeliveryCodeEntryView: View {
+    let delivery: Delivery
+    let onComplete: () -> Void
+
+    @StateObject private var locationManager = LocationManager()
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var enteredCode = ""
+    @State private var errorMessage: String?
+    @State private var isVerifying = false
+    @FocusState private var isCodeFocused: Bool
+
+    /// Maximum distance in meters to consider the driver "at" the client
+    private let proximityThreshold: Double = 200
+
+    var isNearClient: Bool {
+        guard let driverLocation = locationManager.location else { return false }
+        let clientLocation = CLLocation(latitude: delivery.customerLatitude, longitude: delivery.customerLongitude)
+        let driverCLLocation = CLLocation(latitude: driverLocation.latitude, longitude: driverLocation.longitude)
+        return driverCLLocation.distance(from: clientLocation) <= proximityThreshold
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Spacer()
+
+                // Header
+                VStack(spacing: 8) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(Color(hex: "#22C55E"))
+
+                    Text("Confirmer la livraison")
+                        .font(.title2)
+                        .fontWeight(.bold)
+
+                    Text("Demandez le code à 4 chiffres au client")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                // GPS proximity indicator
+                HStack(spacing: 12) {
+                    Image(systemName: isNearClient ? "location.fill" : "location.slash.fill")
+                        .foregroundColor(isNearClient ? Color(hex: "#22C55E") : .orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(isNearClient ? "Position confirmée" : "Vous êtes trop loin du client")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text(isNearClient ? "Vous pouvez entrer le code" : "Rapprochez-vous de l'adresse de livraison")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(isNearClient ? Color(hex: "#22C55E").opacity(0.1) : Color.orange.opacity(0.1))
+                .cornerRadius(12)
+                .padding(.horizontal)
+
+                // Code Entry
+                VStack(spacing: 12) {
+                    TextField("0000", text: $enteredCode)
+                        .font(.system(size: 40, weight: .bold, design: .monospaced))
+                        .multilineTextAlignment(.center)
+                        .keyboardType(.numberPad)
+                        .focused($isCodeFocused)
+                        .onChange(of: enteredCode) { _, newValue in
+                            // Limit to 4 digits
+                            let filtered = String(newValue.prefix(4).filter { $0.isNumber })
+                            if filtered != newValue {
+                                enteredCode = filtered
+                            }
+                            errorMessage = nil
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 60)
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                }
+
+                // Validate button
+                Button(action: validateCode) {
+                    HStack {
+                        if isVerifying {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                            Text("Valider la livraison")
+                                .fontWeight(.semibold)
+                        }
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(canValidate ? Color(hex: "#22C55E") : Color.gray)
+                    .cornerRadius(12)
+                }
+                .disabled(!canValidate)
+                .padding(.horizontal)
+
+                Spacer()
+            }
+            .navigationTitle("Code de livraison")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") { dismiss() }
+                }
+            }
+            .onAppear {
+                locationManager.requestPermission()
+                locationManager.startUpdating()
+                isCodeFocused = true
+            }
+        }
+    }
+
+    var canValidate: Bool {
+        enteredCode.count == 4 && isNearClient && !isVerifying
+    }
+
+    func validateCode() {
+        isVerifying = true
+        errorMessage = nil
+
+        // Fetch the order's delivery code from Firestore
+        Task {
+            let db = DataService.shared
+            if let order = db.orders.first(where: { $0.id == delivery.orderId }),
+               let code = order.deliveryCode {
+                if enteredCode == code {
+                    onComplete()
+                    dismiss()
+                } else {
+                    errorMessage = "Code incorrect. Veuillez réessayer."
+                }
+            } else {
+                // Fallback: fetch from Firestore directly
+                do {
+                    let doc = try await Firestore.firestore().collection("orders").document(delivery.orderId).getDocument()
+                    let firestoreCode = doc.data()?["deliveryCode"] as? String
+                    if let firestoreCode = firestoreCode, enteredCode == firestoreCode {
+                        onComplete()
+                        dismiss()
+                    } else {
+                        errorMessage = "Code incorrect. Veuillez réessayer."
+                    }
+                } catch {
+                    errorMessage = "Erreur de vérification. Réessayez."
+                }
+            }
+            isVerifying = false
+        }
     }
 }

@@ -39,6 +39,7 @@ struct ClientHomeView: View {
     @State private var showFilters = false
     @State private var showMapView = false
     @State private var isLoading = true
+    @State private var selectedCBDSubCategory: CBDSubCategory = .all
 
     var filteredShops: [Shop] {
         var shops = dataService.getShops()
@@ -164,24 +165,16 @@ struct ClientHomeView: View {
                         ActiveFiltersBar(filters: $filters)
                     }
 
-                    // Categories
+                    // CBD Categories
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            CategoryChip(
-                                name: "Tous",
-                                icon: "square.grid.2x2.fill",
-                                isSelected: filters.category == nil
-                            ) {
-                                filters.category = nil
-                            }
-
-                            ForEach(ShopCategory.allCases, id: \.self) { category in
+                            ForEach(CBDSubCategory.allCases, id: \.self) { subCategory in
                                 CategoryChip(
-                                    name: category.displayName,
-                                    icon: category.icon,
-                                    isSelected: filters.category == category
+                                    name: subCategory.rawValue,
+                                    icon: subCategory.icon,
+                                    isSelected: selectedCBDSubCategory == subCategory
                                 ) {
-                                    filters.category = category
+                                    selectedCBDSubCategory = subCategory
                                 }
                             }
                         }
@@ -373,18 +366,6 @@ struct SearchFiltersSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                // Category
-                Section("Catégorie") {
-                    Picker("Catégorie", selection: $filters.category) {
-                        Text("Toutes").tag(nil as ShopCategory?)
-                        ForEach(ShopCategory.allCases, id: \.self) { category in
-                            Label(category.displayName, systemImage: category.icon)
-                                .tag(category as ShopCategory?)
-                        }
-                    }
-                    .pickerStyle(.navigationLink)
-                }
-
                 // Rating
                 Section("Note minimum") {
                     VStack(alignment: .leading, spacing: 12) {
@@ -621,10 +602,11 @@ struct ShopMapCard: View {
     var body: some View {
         HStack(spacing: 12) {
             // Image
-            if let imageURL = shop.imageURL, let url = URL(string: imageURL) {
-                AsyncImage(url: url) { image in
+            AsyncImage(url: URL(string: shop.imageURL ?? "")) { phase in
+                switch phase {
+                case .success(let image):
                     image.resizable().aspectRatio(contentMode: .fill)
-                } placeholder: {
+                default:
                     Rectangle()
                         .fill(Color(.systemGray5))
                         .overlay(
@@ -632,9 +614,9 @@ struct ShopMapCard: View {
                                 .foregroundColor(.secondary)
                         )
                 }
-                .frame(width: 80, height: 80)
-                .cornerRadius(12)
             }
+            .frame(width: 80, height: 80)
+            .cornerRadius(12)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(shop.name)
@@ -665,8 +647,9 @@ struct ShopMapCard: View {
                 .foregroundColor(.secondary)
         }
         .padding()
-        .background(.ultraThinMaterial)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
+        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: -2)
     }
 }
 
@@ -953,15 +936,24 @@ struct ShopDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 // Header
                 ZStack(alignment: .bottomLeading) {
-                    Rectangle()
-                        .fill(Color(hex: "#22C55E").opacity(0.1))
-                        .frame(height: 200)
-
-                    Image(systemName: shop.category.icon)
-                        .font(.system(size: 60))
-                        .foregroundColor(Color(hex: "#22C55E"))
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 40)
+                    AsyncImage(url: URL(string: shop.imageURL ?? "")) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        default:
+                            Rectangle()
+                                .fill(Color(hex: "#22C55E").opacity(0.1))
+                                .overlay(
+                                    Image(systemName: shop.category.icon)
+                                        .font(.system(size: 60))
+                                        .foregroundColor(Color(hex: "#22C55E"))
+                                )
+                        }
+                    }
+                    .frame(height: 200)
+                    .clipped()
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(shop.name)
@@ -1371,6 +1363,8 @@ struct CheckoutView: View {
     @State private var paymentSheet: PaymentSheet?
     @State private var showPaymentError = false
     @State private var paymentErrorMessage = ""
+    @State private var showOrderConfirmation = false
+    @State private var confirmedOrderId: String?
 
     var selectedAddress: AddressManager.SavedAddress? {
         addressManager.selectedAddress
@@ -1613,6 +1607,34 @@ struct CheckoutView: View {
         }
     }
 
+    private func preparePayment() {
+        guard let shopId = cartManager.currentShopId else { return }
+
+        isPlacingOrder = true
+
+        Task {
+            do {
+                let paymentResponse = try await paymentService.preparePayment(
+                    amount: finalTotal,
+                    shopId: shopId,
+                    useSavedCard: true
+                )
+                paymentIntentId = paymentResponse.paymentIntentId
+
+                if paymentService.wasAutoConfirmed {
+                    await createOrderAfterPayment(shopId: shopId, paymentIntentId: paymentResponse.paymentIntentId)
+                } else {
+                    paymentSheet = paymentService.configurePaymentSheet(from: paymentResponse)
+                    isPlacingOrder = false
+                }
+            } catch {
+                isPlacingOrder = false
+                paymentErrorMessage = error.localizedDescription
+                showPaymentError = true
+            }
+        }
+    }
+
     @ViewBuilder
     private var scheduledDeliverySection: some View {
         CheckoutSection(title: "Heure de livraison", icon: "clock.fill") {
@@ -1784,13 +1806,9 @@ struct CheckoutView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Delivery Address Section
                     deliveryAddressSection
-
-                    // Scheduled Delivery Section
                     scheduledDeliverySection
 
-                    // Notes Section
                     CheckoutSection(title: "Instructions", icon: "text.bubble.fill") {
                         TextField("Ex: Laisser à la porte, digicode 1234...", text: $notes)
                             .padding()
@@ -1798,16 +1816,10 @@ struct CheckoutView: View {
                             .cornerRadius(12)
                     }
 
-                    // Promo Code Section
                     promoCodeSection
-
-                    // Tip Section
                     tipSection
-
-                    // Order Summary
                     orderSummarySection
 
-                    // Age Verification Warning (for restricted products like alcohol)
                     if cartManager.hasRestrictedProducts {
                         AgeVerificationWarningView(
                             restrictedProducts: cartManager.restrictedProductNames,
@@ -1817,7 +1829,6 @@ struct CheckoutView: View {
                         )
                     }
 
-                    // Place Order Button
                     placeOrderButton
                 }
                 .padding()
@@ -1864,6 +1875,12 @@ struct CheckoutView: View {
             } message: {
                 Text(paymentErrorMessage)
             }
+            .fullScreenCover(isPresented: $showOrderConfirmation) {
+                OrderConfirmationOverlay(orderId: confirmedOrderId) {
+                    orderPlaced = true
+                    dismiss()
+                }
+            }
         }
     }
 
@@ -1872,37 +1889,6 @@ struct CheckoutView: View {
             _ = await promoManager.validatePromoCode(promoCodeInput, orderAmount: cartManager.subtotal)
             if promoManager.appliedPromoCode != nil {
                 promoCodeInput = ""
-            }
-        }
-    }
-
-    private func preparePayment() {
-        guard let shopId = cartManager.currentShopId else { return }
-
-        isPlacingOrder = true
-
-        Task {
-            do {
-                // Try paying with saved card first (no UI)
-                let paymentResponse = try await paymentService.preparePayment(
-                    amount: finalTotal,
-                    shopId: shopId,
-                    useSavedCard: true
-                )
-                paymentIntentId = paymentResponse.paymentIntentId
-
-                if paymentService.wasAutoConfirmed {
-                    // Payment succeeded with saved card — go straight to order creation
-                    await createOrderAfterPayment(shopId: shopId, paymentIntentId: paymentResponse.paymentIntentId)
-                } else {
-                    // No saved card or requires interaction — show PaymentSheet
-                    paymentSheet = paymentService.configurePaymentSheet(from: paymentResponse)
-                    isPlacingOrder = false
-                }
-            } catch {
-                isPlacingOrder = false
-                paymentErrorMessage = error.localizedDescription
-                showPaymentError = true
             }
         }
     }
@@ -1950,19 +1936,96 @@ struct CheckoutView: View {
         )
 
         do {
-            _ = try await dataService.createOrder(orderRequest, paymentIntentId: paymentIntentId)
+            let order = try await dataService.createOrder(orderRequest, paymentIntentId: paymentIntentId)
             cartManager.clearCart()
             promoManager.removePromoCode()
             tipManager.reset()
             scheduleManager.reset()
             paymentService.reset()
             isPlacingOrder = false
-            orderPlaced = true
-            dismiss()
+            confirmedOrderId = order.id
+            showOrderConfirmation = true
         } catch {
             isPlacingOrder = false
             paymentErrorMessage = error.localizedDescription
             showPaymentError = true
+        }
+    }
+}
+
+// MARK: - Order Confirmation Overlay
+struct OrderConfirmationOverlay: View {
+    let orderId: String?
+    let onDismiss: () -> Void
+    @State private var showCheckmark = false
+    @State private var showText = false
+
+    var body: some View {
+        ZStack {
+            Color(hex: "#22C55E")
+                .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                Spacer()
+
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.2))
+                        .frame(width: 120, height: 120)
+                        .scaleEffect(showCheckmark ? 1 : 0.5)
+
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 80))
+                        .foregroundColor(.white)
+                        .scaleEffect(showCheckmark ? 1 : 0)
+                }
+                .animation(.spring(response: 0.6, dampingFraction: 0.6), value: showCheckmark)
+
+                VStack(spacing: 8) {
+                    Text("Commande validée !")
+                        .font(.title)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+
+                    Text("Votre commande est en cours de préparation")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.9))
+                        .multilineTextAlignment(.center)
+
+                    if let orderId = orderId {
+                        Text("N° \(orderId.prefix(8).uppercased())")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white.opacity(0.7))
+                            .padding(.top, 4)
+                    }
+                }
+                .opacity(showText ? 1 : 0)
+                .offset(y: showText ? 0 : 20)
+                .animation(.easeOut(duration: 0.4).delay(0.3), value: showText)
+
+                Spacer()
+
+                Button(action: onDismiss) {
+                    Text("Voir ma commande")
+                        .fontWeight(.semibold)
+                        .foregroundColor(Color(hex: "#22C55E"))
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.white)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal, 32)
+                .opacity(showText ? 1 : 0)
+                .animation(.easeOut(duration: 0.4).delay(0.6), value: showText)
+
+                Spacer()
+                    .frame(height: 40)
+            }
+        }
+        .onAppear {
+            showCheckmark = true
+            showText = true
         }
     }
 }
@@ -2562,6 +2625,31 @@ struct OrderTrackingDetailView: View {
                         .padding(.horizontal)
                     }
 
+                    // Delivery Code
+                    if let code = order.deliveryCode, order.status.isActive {
+                        VStack(spacing: 8) {
+                            Text("Code de livraison")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(code)
+                                .font(.system(size: 36, weight: .bold, design: .monospaced))
+                                .foregroundColor(Color(hex: "#22C55E"))
+                            Text("Donnez ce code au livreur pour confirmer la réception")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(hex: "#22C55E").opacity(0.08))
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color(hex: "#22C55E").opacity(0.3), lineWidth: 1)
+                        )
+                        .padding(.horizontal)
+                    }
+
                     // Shop Info
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Boutique")
@@ -2726,7 +2814,7 @@ struct OrderTrackingDetailView: View {
                     }
 
                     // Help Button
-                    Button(action: {}) {
+                    NavigationLink(destination: FAQView()) {
                         HStack {
                             Image(systemName: "questionmark.circle.fill")
                             Text("Besoin d'aide ?")

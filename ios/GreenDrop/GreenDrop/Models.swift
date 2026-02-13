@@ -56,37 +56,34 @@ struct Shop: Identifiable, Codable, Equatable {
 /// Each category provides a localized French display name and an SF Symbol icon
 /// for use in the user interface.
 enum ShopCategory: String, Codable, CaseIterable {
-    case grocery = "grocery"
-    case restaurant = "restaurant"
-    case bakery = "bakery"
-    case pharmacy = "pharmacy"
-    case flowers = "flowers"
     case cbd = "cbd"
-    case other = "other"
 
     /// Localized display name in French for the category.
-    var displayName: String {
-        switch self {
-        case .grocery: return "Epicerie"
-        case .restaurant: return "Restaurant"
-        case .bakery: return "Boulangerie"
-        case .pharmacy: return "Pharmacie"
-        case .flowers: return "Fleuriste"
-        case .cbd: return "CBD Shop"
-        case .other: return "Autre"
-        }
-    }
+    var displayName: String { "CBD Shop" }
 
     /// SF Symbol name representing this category in the UI.
+    var icon: String { "leaf.fill" }
+}
+
+/// CBD product subcategories used for filtering on the home screen.
+enum CBDSubCategory: String, CaseIterable {
+    case all = "Tous"
+    case fleurs = "Fleurs CBD"
+    case huiles = "Huiles CBD"
+    case resines = "Résines CBD"
+    case infusions = "Infusions"
+    case cosmetiques = "Cosmétiques CBD"
+    case accessoires = "Accessoires"
+
     var icon: String {
         switch self {
-        case .grocery: return "cart.fill"
-        case .restaurant: return "fork.knife"
-        case .bakery: return "birthday.cake.fill"
-        case .pharmacy: return "cross.case.fill"
-        case .flowers: return "camera.macro"
-        case .cbd: return "leaf.fill"
-        case .other: return "bag.fill"
+        case .all: return "square.grid.2x2.fill"
+        case .fleurs: return "leaf.fill"
+        case .huiles: return "drop.fill"
+        case .resines: return "circle.hexagongrid.fill"
+        case .infusions: return "cup.and.saucer.fill"
+        case .cosmetiques: return "sparkles"
+        case .accessoires: return "wrench.and.screwdriver.fill"
         }
     }
 }
@@ -238,6 +235,8 @@ struct Order: Identifiable, Codable, Equatable {
     var paymentStatus: String?
     /// Stripe PaymentIntent ID associated with this order.
     var paymentIntentId: String?
+    /// 4-digit code the client gives to the driver to confirm delivery.
+    var deliveryCode: String?
 
     /// The delivery destination as a `CLLocationCoordinate2D`.
     var deliveryCoordinate: CLLocationCoordinate2D {
@@ -249,7 +248,7 @@ struct Order: Identifiable, Codable, Equatable {
         case subtotal, deliveryFee, total, deliveryAddress
         case deliveryLatitude, deliveryLongitude
         case createdAt, updatedAt, estimatedDelivery, notes
-        case paymentStatus, paymentIntentId
+        case paymentStatus, paymentIntentId, deliveryCode
     }
 }
 

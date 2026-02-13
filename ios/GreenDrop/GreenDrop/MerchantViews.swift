@@ -1135,7 +1135,7 @@ struct ShopSettingsView: View {
     @State private var shopCoordinate: CLLocationCoordinate2D?
     @State private var isAddressValidated = false
     @State private var showAddressSearch = false
-    @State private var selectedCategory: ShopCategory = .grocery
+    @State private var selectedCategory: ShopCategory = .cbd
     @State private var deliveryFee = ""
     @State private var minOrderAmount = ""
 
