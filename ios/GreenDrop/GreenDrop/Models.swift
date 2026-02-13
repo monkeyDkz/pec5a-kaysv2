@@ -7,7 +7,11 @@ import CoreLocation
 ///
 /// Each shop has a physical location, belongs to a category, and defines its own delivery
 /// parameters such as fees and minimum order amounts. Shops are owned by merchants.
-struct Shop: Identifiable, Codable, Equatable {
+struct Shop: Identifiable, Codable, Equatable, Hashable {
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
     /// Unique identifier for the shop (Firestore document ID).
     let id: String
     /// Display name of the shop.

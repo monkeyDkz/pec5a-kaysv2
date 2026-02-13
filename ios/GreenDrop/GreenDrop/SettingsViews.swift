@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreLocation
+import MapKit
 import PhotosUI
 import FirebaseFirestore
 import FirebaseStorage
@@ -230,34 +231,80 @@ struct SettingsRow: View {
 // MARK: - Addresses List View
 struct AddressesListView: View {
     @StateObject private var addressManager = AddressManager.shared
+    @StateObject private var locationManager = LocationManager()
     @State private var showAddAddress = false
+    @State private var isLocating = false
+    @State private var locationError: String?
 
     var body: some View {
         List {
-            ForEach(addressManager.addresses) { address in
-                AddressRow(address: address)
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            addressManager.deleteAddress(id: address.id)
-                        } label: {
-                            Label("Supprimer", systemImage: "trash")
+            // Bouton localisation GPS
+            Section {
+                Button(action: { addFromCurrentLocation() }) {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(hex: "#22C55E").opacity(0.15))
+                                .frame(width: 36, height: 36)
+                            if isLocating {
+                                ProgressView()
+                                    .tint(Color(hex: "#22C55E"))
+                            } else {
+                                Image(systemName: "location.fill")
+                                    .foregroundColor(Color(hex: "#22C55E"))
+                            }
                         }
-
-                        Button {
-                            addressManager.setDefault(id: address.id)
-                        } label: {
-                            Label("Par défaut", systemImage: "star")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Ajouter ma position actuelle")
+                                .fontWeight(.medium)
+                                .foregroundColor(.primary)
+                            Text("Utiliser le GPS pour enregistrer une adresse")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
-                        .tint(.orange)
                     }
+                }
+                .disabled(isLocating)
+
+                if let error = locationError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
             }
 
-            Button(action: { showAddAddress = true }) {
-                HStack {
-                    Image(systemName: "plus.circle.fill")
-                        .foregroundColor(Color(hex: "#22C55E"))
-                    Text("Ajouter une adresse")
-                        .foregroundColor(Color(hex: "#22C55E"))
+            // Adresses existantes
+            if !addressManager.addresses.isEmpty {
+                Section("Mes adresses") {
+                    ForEach(addressManager.addresses) { address in
+                        AddressRow(address: address)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    addressManager.deleteAddress(id: address.id)
+                                } label: {
+                                    Label("Supprimer", systemImage: "trash")
+                                }
+
+                                Button {
+                                    addressManager.setDefault(id: address.id)
+                                } label: {
+                                    Label("Par défaut", systemImage: "star")
+                                }
+                                .tint(.orange)
+                            }
+                    }
+                }
+            }
+
+            // Ajouter manuellement
+            Section {
+                Button(action: { showAddAddress = true }) {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(Color(hex: "#22C55E"))
+                        Text("Ajouter une adresse manuellement")
+                            .foregroundColor(Color(hex: "#22C55E"))
+                    }
                 }
             }
         }
@@ -266,13 +313,44 @@ struct AddressesListView: View {
             AddEditAddressView()
         }
         .overlay {
-            if addressManager.addresses.isEmpty {
+            if addressManager.addresses.isEmpty && !isLocating {
                 ContentUnavailableView(
                     "Aucune adresse",
                     systemImage: "mappin.slash",
                     description: Text("Ajoutez une adresse pour faciliter vos commandes")
                 )
             }
+        }
+        .onAppear {
+            locationManager.requestPermission()
+        }
+    }
+
+    private func addFromCurrentLocation() {
+        isLocating = true
+        locationError = nil
+        locationManager.startUpdating()
+
+        Task {
+            for _ in 0..<20 {
+                if locationManager.location != nil { break }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+
+            guard let coord = locationManager.location else {
+                locationError = "Impossible d'obtenir votre position."
+                isLocating = false
+                return
+            }
+
+            do {
+                _ = try await addressManager.addAddressFromLocation(coord, label: "Ma position")
+            } catch {
+                locationError = "Impossible de résoudre l'adresse."
+            }
+
+            isLocating = false
+            locationManager.stopUpdating()
         }
     }
 }
@@ -347,140 +425,432 @@ struct AddressRow: View {
 // MARK: - Add/Edit Address View
 struct AddEditAddressView: View {
     @StateObject private var addressManager = AddressManager.shared
+    @StateObject private var locationManager = LocationManager()
+    @StateObject private var searchCompleter = AddressSearchCompleter()
     @Environment(\.dismiss) private var dismiss
 
+    // Step 1: Search / GPS  →  Step 2: Confirm details
+    @State private var step: AddressStep = .search
     @State private var label = ""
     @State private var street = ""
     @State private var city = ""
     @State private var postalCode = ""
+    @State private var country = "France"
     @State private var instructions = ""
     @State private var selectedLabel = "Maison"
     @State private var isSaving = false
-    @State private var geocodeError: String?
+    @State private var isLocating = false
+    @State private var isResolving = false
+    @State private var errorMessage: String?
+    @State private var resolvedCoordinate: CLLocationCoordinate2D?
+    @State private var resolvedFullAddress: String?
+
+    enum AddressStep {
+        case search, confirm
+    }
 
     let labelOptions = ["Maison", "Travail", "Autre"]
 
     var isValid: Bool {
-        !street.isEmpty && !city.isEmpty && !postalCode.isEmpty
+        !street.isEmpty && !city.isEmpty && !postalCode.isEmpty && resolvedCoordinate != nil
     }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Type d'adresse") {
-                    Picker("Label", selection: $selectedLabel) {
-                        ForEach(labelOptions, id: \.self) { option in
-                            Text(option).tag(option)
+            Group {
+                if step == .search {
+                    searchStepView
+                } else {
+                    confirmStepView
+                }
+            }
+            .navigationTitle(step == .search ? "Rechercher une adresse" : "Confirmer l'adresse")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(step == .search ? "Annuler" : "Retour") {
+                        if step == .confirm {
+                            step = .search
+                        } else {
+                            dismiss()
                         }
                     }
-                    .pickerStyle(.segmented)
-
-                    if selectedLabel == "Autre" {
-                        TextField("Nom personnalisé", text: $label)
-                    }
                 }
-
-                Section("Adresse") {
-                    TextField("Rue et numéro", text: $street)
-                    TextField("Ville", text: $city)
-                    TextField("Code postal", text: $postalCode)
-                        .keyboardType(.numberPad)
-                }
-
-                Section("Instructions (optionnel)") {
-                    TextField("Ex: Digicode 1234, 3ème étage", text: $instructions)
-                }
-
-                if let error = geocodeError {
-                    Section {
-                        HStack(spacing: 6) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                            Text(error)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                if step == .confirm {
+                    ToolbarItem(placement: .confirmationAction) {
+                        if isSaving {
+                            ProgressView()
+                        } else {
+                            Button("Enregistrer") { saveAddress() }
+                                .fontWeight(.semibold)
+                                .disabled(!isValid)
                         }
                     }
                 }
             }
-            .navigationTitle("Nouvelle adresse")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Annuler") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if isSaving {
-                        ProgressView()
-                    } else {
-                        Button("Enregistrer") {
-                            saveAddress()
+            .onAppear {
+                locationManager.requestPermission()
+            }
+        }
+    }
+
+    // MARK: - Step 1: Search
+
+    private var searchStepView: some View {
+        List {
+            // GPS
+            Section {
+                Button(action: { useCurrentLocation() }) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(hex: "#22C55E").opacity(0.15))
+                                .frame(width: 40, height: 40)
+                            if isLocating {
+                                ProgressView()
+                                    .tint(Color(hex: "#22C55E"))
+                            } else {
+                                Image(systemName: "location.fill")
+                                    .foregroundColor(Color(hex: "#22C55E"))
+                            }
                         }
-                        .disabled(!isValid)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Utiliser ma position")
+                                .fontWeight(.medium)
+                                .foregroundColor(.primary)
+                            Text(isLocating ? "Localisation en cours..." : "Position GPS actuelle")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                    }
+                }
+                .disabled(isLocating || isResolving)
+            }
+
+            // Search field
+            Section("Rechercher une adresse") {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    TextField("Tapez une adresse...", text: $searchCompleter.query)
+                        .autocorrectionDisabled()
+                }
+
+                if isResolving {
+                    HStack {
+                        ProgressView()
+                        Text("Validation de l'adresse...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            // Search results
+            if !searchCompleter.results.isEmpty && !searchCompleter.query.isEmpty {
+                Section("Suggestions") {
+                    ForEach(searchCompleter.results, id: \.self) { result in
+                        Button(action: { selectSearchResult(result) }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "mappin.circle.fill")
+                                    .foregroundColor(Color(hex: "#22C55E"))
+                                    .font(.title3)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(result.title)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.primary)
+                                    if !result.subtitle.isEmpty {
+                                        Text(result.subtitle)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .disabled(isResolving)
+                    }
+                }
+            }
+
+            if let error = errorMessage {
+                Section {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                 }
             }
         }
     }
 
-    func saveAddress() {
-        let finalLabel = selectedLabel == "Autre" ? label : selectedLabel
-        let fullAddress = "\(street), \(postalCode) \(city), France"
-        isSaving = true
-        geocodeError = nil
+    // MARK: - Step 2: Confirm
 
-        Task {
-            var coordinate: CLLocationCoordinate2D?
-            do {
-                let result = try await GeocodingService.shared.geocode(fullAddress)
-                coordinate = result.coordinate
-            } catch {
-                geocodeError = "Adresse introuvable. Elle sera enregistrée sans coordonnées GPS."
+    private var confirmStepView: some View {
+        Form {
+            // Validated address preview
+            Section {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: "#22C55E").opacity(0.15))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(Color(hex: "#22C55E"))
+                            .font(.title3)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Adresse validée")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(Color(hex: "#22C55E"))
+                        Text(resolvedFullAddress ?? "\(street), \(postalCode) \(city)")
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                    }
+                }
             }
 
-            let address = addressManager.createAddress(
-                label: finalLabel,
-                street: street,
-                city: city,
-                postalCode: postalCode,
-                instructions: instructions.isEmpty ? nil : instructions,
-                coordinate: coordinate
-            )
-            addressManager.addAddress(address)
-            isSaving = false
-            dismiss()
+            Section("Type d'adresse") {
+                Picker("Label", selection: $selectedLabel) {
+                    ForEach(labelOptions, id: \.self) { option in
+                        Text(option).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                if selectedLabel == "Autre" {
+                    TextField("Nom personnalisé", text: $label)
+                }
+            }
+
+            Section("Détails de l'adresse") {
+                HStack {
+                    Text("Rue")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(street)
+                }
+                HStack {
+                    Text("Ville")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(city)
+                }
+                HStack {
+                    Text("Code postal")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(postalCode)
+                }
+                HStack {
+                    Text("Pays")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(country)
+                }
+            }
+
+            Section("Instructions de livraison (optionnel)") {
+                TextField("Ex: Digicode 1234, 3ème étage, bâtiment B", text: $instructions)
+            }
         }
+    }
+
+    // MARK: - Actions
+
+    private func useCurrentLocation() {
+        isLocating = true
+        errorMessage = nil
+        locationManager.startUpdating()
+
+        Task {
+            for _ in 0..<20 {
+                if locationManager.location != nil { break }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+
+            guard let coord = locationManager.location else {
+                errorMessage = "Impossible d'obtenir votre position. Vérifiez vos paramètres de localisation."
+                isLocating = false
+                return
+            }
+
+            resolvedCoordinate = coord
+
+            do {
+                let geocoder = CLGeocoder()
+                let location = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+                let placemarks = try await geocoder.reverseGeocodeLocation(location)
+
+                if let pm = placemarks.first {
+                    fillFromPlacemark(pm)
+                    resolvedFullAddress = [street, "\(postalCode) \(city)", country]
+                        .filter { !$0.isEmpty }.joined(separator: ", ")
+                    step = .confirm
+                } else {
+                    errorMessage = "Aucune adresse trouvée pour cette position."
+                }
+            } catch {
+                errorMessage = "Impossible de résoudre l'adresse."
+            }
+
+            isLocating = false
+            locationManager.stopUpdating()
+        }
+    }
+
+    private func selectSearchResult(_ result: MKLocalSearchCompletion) {
+        isResolving = true
+        errorMessage = nil
+
+        Task {
+            do {
+                let (_, coordinate) = try await searchCompleter.selectResult(result)
+                resolvedCoordinate = coordinate
+
+                let geocoder = CLGeocoder()
+                let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                let placemarks = try await geocoder.reverseGeocodeLocation(location)
+
+                if let pm = placemarks.first {
+                    fillFromPlacemark(pm)
+                    resolvedFullAddress = [result.title, result.subtitle]
+                        .filter { !$0.isEmpty }.joined(separator: ", ")
+                    searchCompleter.query = ""
+                    step = .confirm
+                } else {
+                    // Fallback
+                    street = result.title
+                    resolvedFullAddress = [result.title, result.subtitle]
+                        .filter { !$0.isEmpty }.joined(separator: ", ")
+                    searchCompleter.query = ""
+                    step = .confirm
+                }
+            } catch {
+                errorMessage = "Impossible de valider cette adresse. Essayez-en une autre."
+            }
+
+            isResolving = false
+        }
+    }
+
+    private func fillFromPlacemark(_ pm: CLPlacemark) {
+        var s = ""
+        if let num = pm.subThoroughfare { s += num + " " }
+        if let road = pm.thoroughfare { s += road }
+        street = s.isEmpty ? "Adresse" : s
+        city = pm.locality ?? ""
+        postalCode = pm.postalCode ?? ""
+        country = pm.country ?? "France"
+    }
+
+    private func saveAddress() {
+        let finalLabel = selectedLabel == "Autre" ? (label.isEmpty ? "Autre" : label) : selectedLabel
+        isSaving = true
+
+        let address = addressManager.createAddress(
+            label: finalLabel,
+            street: street,
+            city: city,
+            postalCode: postalCode,
+            country: country,
+            instructions: instructions.isEmpty ? nil : instructions,
+            coordinate: resolvedCoordinate
+        )
+        addressManager.addAddress(address)
+        isSaving = false
+        dismiss()
     }
 }
 
 // MARK: - Address Selection Sheet (for Checkout)
 struct AddressSelectionSheet: View {
     @StateObject private var addressManager = AddressManager.shared
+    @StateObject private var locationManager = LocationManager()
     @Environment(\.dismiss) private var dismiss
     @State private var showAddAddress = false
+    @State private var isLocating = false
+    @State private var locationError: String?
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(addressManager.addresses) { address in
-                    Button(action: {
-                        addressManager.selectAddress(id: address.id)
-                        dismiss()
-                    }) {
-                        HStack {
-                            AddressRow(address: address)
+                // Utiliser ma position actuelle
+                Section {
+                    Button(action: { useCurrentLocation() }) {
+                        HStack(spacing: 10) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(hex: "#22C55E").opacity(0.15))
+                                    .frame(width: 36, height: 36)
+                                if isLocating {
+                                    ProgressView()
+                                        .tint(Color(hex: "#22C55E"))
+                                } else {
+                                    Image(systemName: "location.fill")
+                                        .foregroundColor(Color(hex: "#22C55E"))
+                                }
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Ma position actuelle")
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.primary)
+                                Text(isLocating ? "Localisation en cours..." : "Utiliser le GPS")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                             Spacer()
                         }
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .disabled(isLocating)
+
+                    if let error = locationError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
                 }
 
-                Button(action: { showAddAddress = true }) {
-                    HStack {
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundColor(Color(hex: "#22C55E"))
-                        Text("Ajouter une adresse")
-                            .foregroundColor(Color(hex: "#22C55E"))
+                // Adresses enregistrées
+                if !addressManager.addresses.isEmpty {
+                    Section("Adresses enregistrées") {
+                        ForEach(addressManager.addresses) { address in
+                            Button(action: {
+                                addressManager.selectAddress(id: address.id)
+                                dismiss()
+                            }) {
+                                HStack {
+                                    AddressRow(address: address)
+                                    Spacer()
+                                    if addressManager.selectedAddressId == address.id {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(Color(hex: "#22C55E"))
+                                    }
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                }
+
+                // Ajouter une adresse
+                Section {
+                    Button(action: { showAddAddress = true }) {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundColor(Color(hex: "#22C55E"))
+                            Text("Ajouter une adresse")
+                                .foregroundColor(Color(hex: "#22C55E"))
+                        }
                     }
                 }
             }
@@ -494,8 +864,42 @@ struct AddressSelectionSheet: View {
             .sheet(isPresented: $showAddAddress) {
                 AddEditAddressView()
             }
+            .onAppear {
+                locationManager.requestPermission()
+            }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private func useCurrentLocation() {
+        isLocating = true
+        locationError = nil
+        locationManager.startUpdating()
+
+        Task {
+            for _ in 0..<20 {
+                if locationManager.location != nil { break }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+
+            guard let coord = locationManager.location else {
+                locationError = "Impossible d'obtenir votre position."
+                isLocating = false
+                return
+            }
+
+            do {
+                let saved = try await addressManager.addAddressFromLocation(coord, label: "Ma position")
+                addressManager.selectAddress(id: saved.id)
+                isLocating = false
+                locationManager.stopUpdating()
+                dismiss()
+            } catch {
+                locationError = "Impossible de résoudre l'adresse."
+                isLocating = false
+                locationManager.stopUpdating()
+            }
+        }
     }
 }
 

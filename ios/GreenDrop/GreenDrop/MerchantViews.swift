@@ -1292,7 +1292,17 @@ struct ShopSettingsView: View {
             Text("Les informations de votre boutique ont été enregistrées.")
         }
         .task {
+            // Load shops if not yet loaded
+            if dataService.shops.isEmpty {
+                await dataService.loadShops()
+            }
             loadShopData()
+        }
+        .onChange(of: dataService.shops) {
+            // Reload if shop data was empty and shops just loaded
+            if shopName.isEmpty || existingImageURL == nil {
+                loadShopData()
+            }
         }
     }
 
@@ -1313,15 +1323,30 @@ struct ShopSettingsView: View {
     }
 
     private func loadShopData() {
-        guard let shop = dataService.getShop(id: shopId) else { return }
-        shopName = shop.name
-        shopDescription = shop.description
-        shopAddress = shop.address
+        // Try from local cache first
+        if let shop = dataService.getShop(id: shopId) {
+            populateFields(from: shop)
+            return
+        }
+        // Fallback: load directly from Firestore
+        Task {
+            await dataService.loadShops()
+            if let shop = dataService.getShop(id: shopId) {
+                populateFields(from: shop)
+            }
+        }
+    }
+
+    private func populateFields(from shop: Shop) {
+        // Only populate if fields are empty (don't overwrite user edits)
+        if shopName.isEmpty { shopName = shop.name }
+        if shopDescription.isEmpty { shopDescription = shop.description }
+        if shopAddress.isEmpty { shopAddress = shop.address }
+        if existingImageURL == nil { existingImageURL = shop.imageURL }
         selectedCategory = shop.category
-        existingImageURL = shop.imageURL
-        deliveryFee = String(format: "%.2f", shop.deliveryFee)
-        minOrderAmount = String(format: "%.2f", shop.minOrderAmount)
-        if !shop.address.isEmpty {
+        if deliveryFee.isEmpty { deliveryFee = String(format: "%.2f", shop.deliveryFee) }
+        if minOrderAmount.isEmpty { minOrderAmount = String(format: "%.2f", shop.minOrderAmount) }
+        if !shop.address.isEmpty && shopCoordinate == nil {
             shopCoordinate = shop.coordinate
             isAddressValidated = true
         }
@@ -1353,6 +1378,11 @@ struct ShopSettingsView: View {
                 ]
 
                 if let coordinate = shopCoordinate {
+                    data["location"] = [
+                        "latitude": coordinate.latitude,
+                        "longitude": coordinate.longitude
+                    ]
+                    // Also store at top level for compatibility
                     data["latitude"] = coordinate.latitude
                     data["longitude"] = coordinate.longitude
                 }

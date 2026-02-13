@@ -510,59 +510,77 @@ struct ShopsMapView: View {
     let shops: [Shop]
     @Environment(\.dismiss) private var dismiss
     @State private var selectedShop: Shop?
+    @State private var navigateToShop: Shop?
     @State private var region = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 48.8566, longitude: 2.3522),
         span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
     )
 
     var body: some View {
-        ZStack {
-            Map(coordinateRegion: $region, annotationItems: shops) { shop in
-                MapAnnotation(coordinate: shop.coordinate) {
-                    ShopMapPin(shop: shop, isSelected: selectedShop?.id == shop.id)
-                        .onTapGesture { selectedShop = shop }
-                }
-            }
-            .ignoresSafeArea()
-
-            // Top bar
-            VStack {
-                HStack {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark")
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                            .padding(12)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
+        NavigationStack {
+            ZStack {
+                // Map plein écran
+                Map(coordinateRegion: $region, annotationItems: shops) { shop in
+                    MapAnnotation(coordinate: shop.coordinate) {
+                        ShopMapPin(shop: shop, isSelected: selectedShop?.id == shop.id)
+                            .onTapGesture { selectedShop = shop }
                     }
+                }
+                .ignoresSafeArea()
+                .onTapGesture {
+                    selectedShop = nil
+                }
+
+                // Overlay UI
+                VStack {
+                    // Top bar
+                    HStack {
+                        Button(action: { dismiss() }) {
+                            Image(systemName: "xmark")
+                                .font(.headline)
+                                .foregroundColor(.black)
+                                .padding(12)
+                                .background(Color(uiColor: .white))
+                                .clipShape(Circle())
+                                .shadow(color: .black.opacity(0.2), radius: 6, x: 0, y: 2)
+                        }
+
+                        Spacer()
+
+                        Text("\(shops.count) boutiques")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color(uiColor: .white))
+                            .cornerRadius(20)
+                            .shadow(color: .black.opacity(0.2), radius: 6, x: 0, y: 2)
+                    }
+                    .padding()
 
                     Spacer()
 
-                    Text("\(shops.count) boutiques")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial)
-                        .cornerRadius(20)
-                }
-                .padding()
-
-                Spacer()
-
-                // Selected shop card
-                if let shop = selectedShop {
-                    NavigationLink(destination: ShopDetailView(shop: shop)) {
+                    // Carte boutique sélectionnée
+                    if let shop = selectedShop {
                         ShopMapCard(shop: shop)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                navigateToShop = shop
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 24)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    .buttonStyle(PlainButtonStyle())
-                    .padding()
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+                .compositingGroup()
+            }
+            .animation(.easeInOut(duration: 0.2), value: selectedShop)
+            .navigationBarHidden(true)
+            .navigationDestination(item: $navigateToShop) { shop in
+                ShopDetailView(shop: shop)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: selectedShop)
     }
 }
 
@@ -601,55 +619,71 @@ struct ShopMapCard: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Image
-            AsyncImage(url: URL(string: shop.imageURL ?? "")) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                default:
-                    Rectangle()
-                        .fill(Color(.systemGray5))
-                        .overlay(
-                            Image(systemName: shop.category.icon)
-                                .foregroundColor(.secondary)
-                        )
+            // Image boutique
+            if let imageURL = shop.imageURL, let url = URL(string: imageURL) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    default:
+                        shopImagePlaceholder
+                    }
                 }
+                .frame(width: 70, height: 70)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else {
+                shopImagePlaceholder
+                    .frame(width: 70, height: 70)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .frame(width: 80, height: 80)
-            .cornerRadius(12)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(shop.name)
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.black)
 
                 HStack(spacing: 4) {
                     Image(systemName: "star.fill")
-                        .foregroundColor(.yellow)
+                        .foregroundStyle(.orange)
+                        .font(.system(size: 11))
                     Text(String(format: "%.1f", shop.rating))
+                        .foregroundStyle(.black)
                     Text("(\(shop.reviewCount))")
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(Color(uiColor: .darkGray))
                 }
                 .font(.caption)
 
-                HStack {
-                    Label(shop.estimatedDeliveryTime, systemImage: "clock")
-                    Text("•")
-                    Text(String(format: "%.2f € livraison", shop.deliveryFee))
+                HStack(spacing: 4) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 10))
+                    Text(shop.estimatedDeliveryTime)
+                    Text("·")
+                    Text(String(format: "%.2f€", shop.deliveryFee))
                 }
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(Color(uiColor: .darkGray))
             }
 
             Spacer()
 
             Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color(hex: "#22C55E"))
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: -2)
+        .padding(12)
+        .background(Color(uiColor: .white))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 4)
+    }
+
+    private var shopImagePlaceholder: some View {
+        Rectangle()
+            .fill(Color(uiColor: UIColor(red: 0.93, green: 0.97, blue: 0.93, alpha: 1)))
+            .overlay(
+                Image(systemName: "leaf.fill")
+                    .foregroundStyle(Color(hex: "#22C55E"))
+                    .font(.system(size: 24))
+            )
     }
 }
 

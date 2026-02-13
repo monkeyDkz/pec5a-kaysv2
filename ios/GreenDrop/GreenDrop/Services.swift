@@ -904,21 +904,37 @@ final class DataService: ObservableObject {
             deliveryLng = location["longitude"] as? Double ?? 2.3522
         }
 
+        // Parse shop location
+        var shopLat = 48.8566
+        var shopLng = 2.3522
+        if let shopLocation = data["shopLocation"] as? [String: Any] {
+            shopLat = shopLocation["latitude"] as? Double ?? 48.8566
+            shopLng = shopLocation["longitude"] as? Double ?? 2.3522
+        } else if let shopId = data["shopId"] as? String, let shop = getShop(id: shopId) {
+            shopLat = shop.latitude
+            shopLng = shop.longitude
+        }
+
+        // Calculate real distance between shop and customer
+        let shopLocation = CLLocation(latitude: shopLat, longitude: shopLng)
+        let customerLocation = CLLocation(latitude: deliveryLat, longitude: deliveryLng)
+        let distanceKm = shopLocation.distance(from: customerLocation) / 1000.0
+
         return Delivery(
             id: orderId,
             orderId: orderId,
             driverId: data["driverId"] as? String,
             shopName: data["shopName"] as? String ?? "Shop",
             shopAddress: data["shopAddress"] as? String ?? "",
-            shopLatitude: 48.8566,
-            shopLongitude: 2.3522,
+            shopLatitude: shopLat,
+            shopLongitude: shopLng,
             customerName: "Client",
             customerAddress: data["deliveryAddress"] as? String ?? "",
             customerLatitude: deliveryLat,
             customerLongitude: deliveryLng,
             status: .available,
-            earnings: (data["deliveryFee"] as? Double ?? 5.0) * 0.8, // 80% for driver
-            distance: 2.5,
+            earnings: (data["deliveryFee"] as? Double ?? 5.0) * 0.8,
+            distance: round(distanceKm * 10) / 10,
             createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date(),
             pickedUpAt: nil,
             deliveredAt: nil
@@ -986,11 +1002,72 @@ final class DataService: ObservableObject {
             }
 
             shops = loadedShops
+
+            // Auto-geocode shops with default/missing coordinates
+            Task {
+                await geocodeMissingShopCoordinates()
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
 
         isLoading = false
+    }
+
+    /// Geocodes all shop addresses and updates coordinates in local cache + Firestore.
+    private func geocodeMissingShopCoordinates() async {
+        let geocoder = CLGeocoder()
+
+        for (index, shop) in shops.enumerated() {
+            guard !shop.address.isEmpty else { continue }
+
+            do {
+                let placemarks = try await geocoder.geocodeAddressString(shop.address)
+                guard let location = placemarks.first?.location else { continue }
+
+                let newLat = location.coordinate.latitude
+                let newLng = location.coordinate.longitude
+
+                // Skip if coordinates already match (within 50m)
+                let current = CLLocation(latitude: shop.latitude, longitude: shop.longitude)
+                let resolved = CLLocation(latitude: newLat, longitude: newLng)
+                if current.distance(from: resolved) < 50 { continue }
+
+                // Update local cache
+                shops[index] = Shop(
+                    id: shop.id,
+                    name: shop.name,
+                    description: shop.description,
+                    imageURL: shop.imageURL,
+                    address: shop.address,
+                    latitude: newLat,
+                    longitude: newLng,
+                    category: shop.category,
+                    rating: shop.rating,
+                    reviewCount: shop.reviewCount,
+                    isOpen: shop.isOpen,
+                    deliveryFee: shop.deliveryFee,
+                    minOrderAmount: shop.minOrderAmount,
+                    estimatedDeliveryTime: shop.estimatedDeliveryTime,
+                    ownerId: shop.ownerId
+                )
+
+                // Update Firestore
+                try? await db.collection("shops").document(shop.id).updateData([
+                    "location": [
+                        "latitude": newLat,
+                        "longitude": newLng
+                    ],
+                    "latitude": newLat,
+                    "longitude": newLng
+                ])
+
+                // Delay to avoid geocoder rate limits
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            } catch {
+                // Skip this shop
+            }
+        }
     }
 
     /// Parses a Firestore document into a `Shop` model.
@@ -1004,12 +1081,15 @@ final class DataService: ObservableObject {
         let data = document.data() ?? [:]
         let id = document.documentID
 
-        // Parse location (support both latitude/longitude and lat/lng)
+        // Parse location (support nested "location" object, or top-level latitude/longitude)
         var latitude = 48.8566
         var longitude = 2.3522
         if let location = data["location"] as? [String: Any] {
             latitude = location["latitude"] as? Double ?? location["lat"] as? Double ?? 48.8566
             longitude = location["longitude"] as? Double ?? location["lng"] as? Double ?? 2.3522
+        } else if let lat = data["latitude"] as? Double, let lng = data["longitude"] as? Double {
+            latitude = lat
+            longitude = lng
         }
 
         // Parse category
@@ -1297,6 +1377,10 @@ final class DataService: ObservableObject {
             "shopId": orderRequest.shopId,
             "shopName": shop?.name ?? "Shop",
             "shopAddress": shop?.address ?? "",
+            "shopLocation": [
+                "latitude": shop?.latitude ?? 48.8566,
+                "longitude": shop?.longitude ?? 2.3522
+            ],
             "driverId": NSNull(),
             "reference": reference,
             "status": "pending",
@@ -1529,21 +1613,29 @@ final class DataService: ObservableObject {
 
                 if let order = parseOrder(from: document) {
                     let shop = getShop(id: order.shopId)
+                    let shopLat = shop?.latitude ?? 48.8566
+                    let shopLng = shop?.longitude ?? 2.3522
+
+                    // Calculate real distance
+                    let shopLoc = CLLocation(latitude: shopLat, longitude: shopLng)
+                    let custLoc = CLLocation(latitude: order.deliveryLatitude, longitude: order.deliveryLongitude)
+                    let distanceKm = shopLoc.distance(from: custLoc) / 1000.0
+
                     let delivery = Delivery(
                         id: document.documentID,
                         orderId: document.documentID,
                         driverId: nil,
                         shopName: order.shopName,
                         shopAddress: data["shopAddress"] as? String ?? shop?.address ?? "",
-                        shopLatitude: shop?.latitude ?? 48.8566,
-                        shopLongitude: shop?.longitude ?? 2.3522,
+                        shopLatitude: shopLat,
+                        shopLongitude: shopLng,
                         customerName: "Client",
                         customerAddress: order.deliveryAddress,
                         customerLatitude: order.deliveryLatitude,
                         customerLongitude: order.deliveryLongitude,
                         status: .available,
                         earnings: order.deliveryFee * 0.8,
-                        distance: 2.5,
+                        distance: round(distanceKm * 10) / 10,
                         createdAt: order.createdAt,
                         pickedUpAt: nil,
                         deliveredAt: nil
@@ -1993,11 +2085,11 @@ struct DemoData {
         Shop(
             id: "shop1",
             name: "GreenLeaf Paris",
-            description: "CBD premium au coeur du 1er arrondissement",
+            description: "CBD premium au coeur du 11eme",
             imageURL: "https://images.unsplash.com/photo-1616690710400-a16d146927c5?w=400",
-            address: "15 Rue de Rivoli, 75001 Paris",
-            latitude: 48.8566,
-            longitude: 2.3425,
+            address: "11 Rue Pierre Levée, 75011 Paris",
+            latitude: 48.8658,
+            longitude: 2.3649,
             category: .cbd,
             rating: 4.8,
             reviewCount: 312,
@@ -2010,11 +2102,11 @@ struct DemoData {
         Shop(
             id: "shop2",
             name: "Le Chanvre Dore",
-            description: "Boutique artisanale CBD dans le Marais",
+            description: "Boutique artisanale CBD pres de Republique",
             imageURL: "https://images.unsplash.com/photo-1603909223429-69bb7101f420?w=400",
-            address: "28 Rue des Francs-Bourgeois, 75004 Paris",
-            latitude: 48.8574,
-            longitude: 2.3602,
+            address: "25 Rue du Faubourg du Temple, 75010 Paris",
+            latitude: 48.8683,
+            longitude: 2.3648,
             category: .cbd,
             rating: 4.6,
             reviewCount: 245,
@@ -2026,12 +2118,12 @@ struct DemoData {
         ),
         Shop(
             id: "shop3",
-            name: "CBD Factory Bastille",
-            description: "Le plus grand choix de CBD a Bastille",
+            name: "CBD Factory Oberkampf",
+            description: "Le plus grand choix de CBD a Oberkampf",
             imageURL: "https://images.unsplash.com/photo-1556928045-16f7f50be0f3?w=400",
-            address: "45 Rue de la Roquette, 75011 Paris",
-            latitude: 48.8534,
-            longitude: 2.3742,
+            address: "78 Rue Oberkampf, 75011 Paris",
+            latitude: 48.8651,
+            longitude: 2.3781,
             category: .cbd,
             rating: 4.5,
             reviewCount: 189,
@@ -2043,12 +2135,12 @@ struct DemoData {
         ),
         Shop(
             id: "shop4",
-            name: "Herbal House Montmartre",
-            description: "CBD bio et bien-etre a Montmartre",
+            name: "Herbal House Belleville",
+            description: "CBD bio et bien-etre a Belleville",
             imageURL: "https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=400",
-            address: "52 Rue Lepic, 75018 Paris",
-            latitude: 48.8853,
-            longitude: 2.3340,
+            address: "3 Rue Denoyez, 75020 Paris",
+            latitude: 48.8716,
+            longitude: 2.3802,
             category: .cbd,
             rating: 4.7,
             reviewCount: 156,
@@ -2691,6 +2783,46 @@ final class AddressManager: ObservableObject {
             isDefault: false,
             instructions: instructions
         )
+    }
+
+    /// Creates and saves an address from GPS coordinates using reverse geocoding.
+    func addAddressFromLocation(_ coordinate: CLLocationCoordinate2D, label: String = "Ma position") async throws -> SavedAddress {
+        let geocoder = CLGeocoder()
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let placemarks = try await geocoder.reverseGeocodeLocation(location)
+
+        guard let placemark = placemarks.first else {
+            throw GeocodingService.GeocodingError.noResults
+        }
+
+        let street: String = {
+            var s = ""
+            if let num = placemark.subThoroughfare { s += num + " " }
+            if let road = placemark.thoroughfare { s += road }
+            return s.isEmpty ? "Position GPS" : s
+        }()
+        let city = placemark.locality ?? ""
+        let postalCode = placemark.postalCode ?? ""
+        let country = placemark.country ?? "France"
+        let fullAddress = [street, "\(postalCode) \(city)", country]
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+
+        let address = SavedAddress(
+            id: UUID().uuidString,
+            label: label,
+            fullAddress: fullAddress,
+            street: street,
+            city: city,
+            postalCode: postalCode,
+            country: country,
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            isDefault: addresses.isEmpty,
+            instructions: nil
+        )
+        addAddress(address)
+        return address
     }
 }
 
